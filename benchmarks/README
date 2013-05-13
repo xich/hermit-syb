@@ -8,9 +8,9 @@ You also need to cabal install parseargs and parallel.
 
 Once that is done, cabal install the syb optimization. You can find it in the:
 
-optimizations/syb/syb-opt
+../hermit-syb
 
-directory of the hermit git repository. Simply enter that directory and type:
+directory. Simply enter that directory and type:
 
 cabal install
 
