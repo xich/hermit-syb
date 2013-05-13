@@ -5,7 +5,7 @@ https://github.com/ku-fpg/hermit/wiki/GHC-HEAD
 
 Once that is done:
 
-cd syb-opt
+cd hermit-syb
 cabal install
 cd ..
 
