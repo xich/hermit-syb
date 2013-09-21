@@ -1,7 +1,6 @@
 {-# LANGUAGE DoAndIfThenElse #-} -- why do we need this?
 module HERMIT.Optimization.SYB where
 
-import GhcPlugins
 import qualified Outputable (showSDocDebug)
 
 import Control.Arrow
@@ -12,23 +11,14 @@ import GHC.Fingerprint (Fingerprint(..), fingerprintFingerprints)
 
 import qualified Data.Map as Map
 
-import Language.HERMIT.Context
-import Language.HERMIT.Core
-import Language.HERMIT.Monad
-import Language.HERMIT.Kure
-import Language.HERMIT.External
-import Language.HERMIT.GHC
-import Language.HERMIT.Optimize
-
-import Language.HERMIT.Primitive.AlphaConversion hiding (externals)
-import Language.HERMIT.Primitive.Debug hiding (externals)
-import Language.HERMIT.Primitive.Common (wrongExprForm, findIdT, letVarsT)
-import Language.HERMIT.Primitive.Fold (stashFoldAnyR)
-import Language.HERMIT.Primitive.GHC hiding (externals)
-import Language.HERMIT.Primitive.Inline (inline)
-import Language.HERMIT.Primitive.Local hiding (externals)
-import Language.HERMIT.Primitive.Navigation hiding (externals)
-import Language.HERMIT.Primitive.New hiding (externals)
+import HERMIT.Context
+import HERMIT.Core
+import HERMIT.Dictionary
+import HERMIT.Monad
+import HERMIT.Kure
+import HERMIT.External
+import HERMIT.GHC
+import HERMIT.Optimize
 
 import qualified Language.Haskell.TH as TH
 
@@ -39,13 +29,13 @@ plugin = optimize $ \ opts -> phase 0 $ do
     then return ()
     else forM_ targets $ \ t -> do
             liftIO $ putStrLn $ "optimizing: " ++ t
-            at (rhsOf $ TH.mkName t) $ do
+            at (rhsOfT $ cmpTHName2Var $ TH.mkName t) $ do
                 run $ optSYB >>> tryR (innermostR $ promoteExprR letrecSubstTrivialR) >>> tryR simplifyR
 
     -- pass either interactive or interactive-only flags to dump into a shell at the end
     if null opts'
     then return ()
-    else interactive externals []
+    else interactive exts []
 
 optSYB :: RewriteH Core
 optSYB = do
@@ -53,15 +43,15 @@ optSYB = do
                           <+ traceR "MID" >>> anytdR (repeatR (promoteExprR (
                                                                    rule "append"
                                                                 <+ rule "[]++"
-                                                                <+ castElimRefl
-                                                                <+ castElimSymPlus
-                                                                <+ letElim
+                                                                <+ castElimReflR
+                                                                <+ castElimSymPlusR
+                                                                <+ letElimR
                                                                 <+ letSubstType (TH.mkName "*")
                                                                 <+ letSubstType (TH.mkName "BOX")
                                                                 <+ evalFingerprintFingerprints
                                                                 <+ eqWordElim
                                                                 <+ letSubstTrivialR
-                                                                <+ caseReduce)
+                                                                <+ caseReduceR)
                                                                >>> traceR "SIMPLIFYING"))
                                               <+ anybuR (promoteExprR ((
                                                               memoFloatMemoLet
@@ -88,25 +78,25 @@ optSYB = do
                                                                   <+ (promoteExprR (forcePrims [TH.mkName "fingerprintFingerprints", TH.mkName "eqWord#"])
                                                                       >>> traceR "FORCING"))))
 
-externals ::  [External]
-externals = map ((.+ Experiment) . (.+ TODO)) [
-   external "let-subst-trivial" (promoteExprR letSubstTrivialR)
+exts ::  [External]
+exts = map ((.+ Experiment) . (.+ TODO)) [
+   external "let-subst-trivial" (promoteExprR letSubstTrivialR :: RewriteH Core)
        [ "Let substitution (but only if e1 is a variable or literal)"
        , "let x = e1 in e2 ==> e2[e1/x]"
        , "x must not be free in e1." ] .+ Deep
- , external "letrec-subst-trivial" (promoteExprR letrecSubstTrivialR)
+ , external "letrec-subst-trivial" (promoteExprR letrecSubstTrivialR :: RewriteH Core)
        [ "Let substitution (but only if e1 is a variable or literal)"
        , "let x = e1 in e2 ==> e2[e1/x]"
        , "x must not be free in e1." ] .+ Deep
- , external "let-subst-type" (promoteExprR . letSubstType)
+ , external "let-subst-type" (promoteExprR . letSubstType :: TH.Name -> RewriteH Core)
        [ "Let substitution (but only if the type of e1 contains the given type)"
        , "(\"let-subst-type '*\" is especially useful to eliminate bindings for types)"
        , "(let x = e1 in e2) ==> (e2[e1/x])"
        , "x must not be free in e1." ] .+ Deep
- , external "eval-eqWord" (promoteExprR eqWordElim)
+ , external "eval-eqWord" (promoteExprR eqWordElim :: RewriteH Core)
         ["eqWord# e1 e2 ==> True if e1 and e2 are literals and equal"
         ,"eqWord# e1 e2 ==> False if e1 and e2 are literals and not equal"] .+ Shallow .+ Eval
- , external "eval-fingerprintFingerprints" (promoteExprR evalFingerprintFingerprints)
+ , external "eval-fingerprintFingerprints" (promoteExprR evalFingerprintFingerprints :: RewriteH Core)
         ["replaces 'fingerprintFingerprints [f1,f2,...]' with its value."
         ,"Requires that f1,f2,... are literals."] .+ Shallow .+ Eval
  , external "eliminates-type" (eliminatesType)
@@ -114,38 +104,38 @@ externals = map ((.+ Experiment) . (.+ TODO)) [
  , external "smart-td" (smarttdR)
         [ "apply a rewrite twice, in a top-down and bottom-up way, using one single tree traversal",
         "succeeding if any succeed"]
- , external "force" (promoteExprR force)
+ , external "force" (promoteExprR force :: RewriteH Core)
         ["cast-elim removes casts"].+ Eval
- , external "force" (promoteExprR . forcePrims)
+ , external "force" (promoteExprR . forcePrims :: [TH.Name] -> RewriteH Core)
         ["cast-elim removes casts"].+ Eval
- , external "memoize" (promoteExprR memoize)
+ , external "memoize" (promoteExprR memoize :: RewriteH Core)
         ["TODO"] .+ Eval .+ Introduce
  , external "opt-syb" (optSYB)
         ["TODO"] .+ Eval .+ Introduce
          , external "memo-float-app" (promoteExprR memoFloatApp :: RewriteH Core)
-                     [ "(let v = ev in e) x ==> let v = ev in e x" ]                    .+ Commute .+ Shallow .+ Bash
+                     [ "(let v = ev in e) x ==> let v = ev in e x" ]                    .+ Commute .+ Shallow
          , external "memo-float-arg" (promoteExprR memoFloatArg :: RewriteH Core)
-                     [ "f (let v = ev in e) ==> let v = ev in f e" ]                    .+ Commute .+ Shallow .+ Bash
+                     [ "f (let v = ev in e) ==> let v = ev in f e" ]                    .+ Commute .+ Shallow
          , external "memo-float-lam" (promoteExprR memoFloatLam :: RewriteH Core)
                      [ "(\\ v1 -> let v2 = e1 in e2)  ==>  let v2 = e1 in (\\ v1 -> e2), if v1 is not free in e2.",
                        "If v1 = v2 then v1 will be alpha-renamed."
-                     ]                                                                  .+ Commute .+ Shallow .+ Bash
+                     ]                                                                  .+ Commute .+ Shallow
          , external "memo-float-memo-let" (promoteExprR memoFloatMemoLet :: RewriteH Core)
-                     [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow .+ Bash
+                     [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow
          , external "memo-float-memo-bind" (promoteExprR memoFloatMemoBind :: RewriteH Core)
-                     [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow .+ Bash
+                     [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow
          , external "memo-float-let" (promoteExprR memoFloatLet :: RewriteH Core)
-                     [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow .+ Bash
+                     [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow
          , external "memo-float-bind" (promoteExprR memoFloatBind :: RewriteH Core)
-                     [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow .+ Bash
+                     [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow
          , external "memo-float-rec-bind" (promoteExprR memoFloatRecBind :: RewriteH Core)
-                     [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow .+ Bash
+                     [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow
          , external "memo-float-case" (promoteExprR memoFloatCase :: RewriteH Core)
-                     [ "case (let v = ev in e) of ... ==> let v = ev in case e of ..." ]  .+ Commute .+ Shallow .+ Eval .+ Bash
+                     [ "case (let v = ev in e) of ... ==> let v = ev in case e of ..." ]  .+ Commute .+ Shallow .+ Eval
          , external "memo-float-cast" (promoteExprR memoFloatCast :: RewriteH Core)
-                     [ "case (let v = ev in e) of ... ==> let v = ev in case e of ..." ]  .+ Commute .+ Shallow .+ Eval .+ Bash
+                     [ "case (let v = ev in e) of ... ==> let v = ev in case e of ..." ]  .+ Commute .+ Shallow .+ Eval
          , external "memo-float-alt" (promoteExprR memoFloatAlt :: RewriteH Core)
-                     [ "case (let v = ev in e) of ... ==> let v = ev in case e of ..." ]  .+ Commute .+ Shallow .+ Eval .+ Bash
+                     [ "case (let v = ev in e) of ... ==> let v = ev in case e of ..." ]  .+ Commute .+ Shallow .+ Eval
  ]
 
 letSubstTrivialR :: RewriteH CoreExpr
@@ -176,7 +166,7 @@ letSubstType :: TH.Name -> RewriteH CoreExpr
 letSubstType ty = prefixFailMsg ("letSubstType '" ++ TH.nameBase ty ++ " failed: ") $
                   {-withPatFailMsg (wrongExprForm "Let (NonRec lhs rhs) body") $-}
    do Let (NonRec lhs rhs) body <- idR
-      let t = exprTypeOrKind rhs
+      let t = exprKindOrType rhs
       dynFlags <- constT getDynFlags
       guardMsg (ty `inType` t) $ " not found in " ++ showPpr dynFlags t ++ "."
       letSubstR
@@ -202,7 +192,7 @@ varInfo2 nm = translate $ \ c e ->
   case filter (cmpTHName2Var nm) $ Map.keys (hermitBindings c) of
          []  -> fail "cannot find name."
          [i] -> do dynFlags <- getDynFlags
-                   return ("Type or Kind: " ++ (showPpr dynFlags . exprTypeOrKind) (Var i))
+                   return ("Type or Kind: " ++ (showPpr dynFlags . exprKindOrType) (Var i))
          is  -> fail $ "multiple names match: " ++ intercalate ", " (map var2String is)
 
 varInfo :: RewriteH CoreExpr
@@ -249,33 +239,28 @@ inlineType :: TH.Name -> RewriteH CoreExpr
 inlineType ty = prefixFailMsg ("inlineType '" ++ TH.nameBase ty ++ " failed: ") $
                 withPatFailMsg (wrongExprForm "Var v") $
    do Var v <- idR
-      let t = (exprTypeOrKind (Var v))
+      let t = (exprKindOrType (Var v))
       dynFlags <- constT getDynFlags
       guardMsg (ty `inType` t) $ " not found in " ++ showPpr dynFlags t ++ "."
-      inline
-
-focusAtPath :: [Int] -> RewriteH Core -> RewriteH CoreExpr
-focusAtPath p r = focusR (injectL >>> pathL p) r
-
-focusAtPathT :: [Int] -> TranslateH Core a -> TranslateH CoreExpr a
-focusAtPathT p r = focusT (injectL >>> pathL p) r
+      inlineR
 
 -- | Apply a 'Rewrite' in a bottom-up manner, succeeding if they all succeed.
 smarttdR :: RewriteH Core -> RewriteH Core
 smarttdR r = modFailMsg ("smarttdR failed: " ++) $ go where
-  go = r <+ promoteExprR go'
+  go = r <+ go'
   go' = do
-    e <- idR
+    ExprCore e <- idR
     case e of
       Var _ -> fail "smarttdR Var"
       Lit _ -> fail "smarttdR Let"
-      App _ _ -> focusAtPath [0] go <+ focusAtPath [1] go
-      Lam _ _ -> focusAtPath [0] go
-      Let (NonRec _ _) _ -> focusAtPath [1] go <+ focusAtPath [0,0] go
-      Let (Rec bs) _ -> focusAtPath [1] go <+ foldr (<+) (fail "smarttdR Let Rec") [focusAtPath [0, i, 0] go | (i, _) <- zip [0..] bs]
-      Case _ _ _ as -> focusAtPath [0] go <+ foldr (<+) (fail "smarttdR Case") [focusAtPath [1+i, 0] go | (i, _) <- zip [0..] as]
-      Cast _ _ -> focusAtPath [0] go
-      Tick _ _ -> focusAtPath [0] go
+      App _ _ -> pathR [App_Fun] go <+ pathR [App_Arg] go
+      Lam _ _ -> pathR [Lam_Body] go
+      Let (NonRec _ _) _ -> pathR [Let_Body] go <+ pathR [Let_Bind,NonRec_RHS] go
+      Let (Rec bs) _ -> pathR [Let_Body] go <+ foldr (<+) (fail "smarttdR Let Rec") [ pathR [Let_Bind, Rec_Def i, Def_RHS] go 
+                                                                                    | (i, _) <- zip [0..] bs]
+      Case _ _ _ as -> pathR [Case_Scrutinee] go <+ foldr (<+) (fail "smarttdR Case") [pathR [Case_Alt i, Alt_RHS] go | (i, _) <- zip [0..] as]
+      Cast _ _ -> pathR [Cast_Expr] go
+      Tick _ _ -> pathR [Tick_Expr] go
       Type _ -> fail "smarttdR Type"
       Coercion _ -> fail "smarttdR Coercion"
 
@@ -297,38 +282,39 @@ eliminatesType ty = do
     Type _ -> fail "types cannot eliminate types"
     Coercion _ -> fail "coercions cannot eliminate types"
   where go :: CoreExpr -> TranslateH Core ()
-        go e = do let t = exprTypeOrKind e
+        go e = do let t = exprKindOrType e
                   dynFlags <- constT getDynFlags
                   guardMsg (ty `inType` t) $ " not found in " ++ showPpr dynFlags t ++ "."
                   return ()
 
 inTypeT :: TH.Name -> TranslateH CoreExpr ()
 inTypeT ty = contextfreeT $ \ e -> do
-    guardMsg (ty `inType` (exprTypeOrKind e)) " not found."
+    guardMsg (ty `inType` (exprKindOrType e)) " not found."
     return ()
 
 force :: RewriteH CoreExpr
 force = forcePrims []
 
 forcePrims :: [TH.Name] -> RewriteH CoreExpr
-forcePrims prims = forceDeep False prims
+forcePrims prims = extractR $ forceDeep False prims
 
-forceDeep :: Bool -> [TH.Name] -> RewriteH CoreExpr
+forceDeep :: Bool -> [TH.Name] -> RewriteH Core
 forceDeep deep prims = do
-  e <- idR
+  ExprCore e <- idR
   case e of
     -- Core reductions
-    Var _ -> inline
+    Var _ -> promoteExprR inlineR
     Lit _ -> fail "literal is already normal"
     Lam _ _ -> fail "lambda is already normal"
-    App _ _ -> betaReduce <+ letFloatApp <+ castFloatApp <+
-               (focusAtPathT [0] (promoteExprT (isPrimCall' prims)) >> focusAtPath [1] (promoteExprR (forceDeep True prims))) <+
-               focusAtPath [0] (promoteExprR (forceDeep deep prims)) <+
-               (if deep then focusAtPath [1] (promoteExprR (forceDeep deep prims)) else fail "TODO")
-    Case _scrut _ _ _ -> focusAtPath [0] (promoteExprR (forceDeep deep prims)) <+ caseReduce <+ letFloatCase
+    App _ _ -> promoteExprR (betaReduceR <+ letFloatAppR <+ castFloatAppR) <+
+               (pathT [App_Fun] (promoteExprT (isPrimCall' prims)) 
+                >> pathR [App_Arg] (forceDeep True prims)) <+
+               pathT [App_Fun] (forceDeep deep prims) <+
+               (if deep then pathR [App_Arg] (forceDeep deep prims) else fail "TODO")
+    Case _scrut _ _ _ -> pathR [Case_Scrutinee] (forceDeep deep prims) <+ promoteExprR (caseReduceR <+ letFloatCaseR)
     -- Syntactic noise that we skip over (but may have to float)
-    Let _ _body -> focusAtPath [1] (promoteExprR (forceDeep deep prims))
-    Cast _body _ -> focusAtPath [0] (promoteExprR (forceDeep deep prims))
+    Let _ _body -> pathR [Let_Body] $ forceDeep deep prims
+    Cast _body _ -> pathR [Cast_Expr] $ forceDeep deep prims
     -- Errors that we never expect to see
     Tick _ _ -> fail "unsupported tick in force"
       {-^ not really an error, I just don't know what to do with it -}
@@ -369,16 +355,16 @@ memoFloatApp :: RewriteH CoreExpr
 memoFloatApp = prefixFailMsg "Let floating from App function failed: " $
   do flags <- constT getDynFlags
      appT letVarsT idR $ \x y -> mapM (lookupDef . showPpr flags) x
-     vs <- appT letVarsT freeVarsT intersect
-     let letAction = if null vs then idR else alphaLet
+     vs <- appT letVarsT (arr $ varSetElems . freeVarsExpr) intersect
+     let letAction = if null vs then idR else alphaLetR
      appT letAction idR $ \ (Let bnds e) x -> Let bnds $ App e x
 
 memoFloatArg :: RewriteH CoreExpr
 memoFloatArg = prefixFailMsg "Let floating from App argument failed: " $
   do flags <- constT getDynFlags
      appT idR letVarsT $ \x y -> mapM (lookupDef . showPpr flags) y
-     vs <- appT freeVarsT letVarsT intersect
-     let letAction = if null vs then idR else alphaLet
+     vs <- appT (arr $ varSetElems . freeVarsExpr) letVarsT intersect
+     let letAction = if null vs then idR else alphaLetR
      appT idR letAction $ \ f (Let bnds e) -> Let bnds $ App f e
 
 memoFloatMemoLet :: RewriteH CoreExpr
@@ -444,7 +430,7 @@ memoFloatBind = prefixFailMsg "Let floating from Let failed: " $ do
   else return (Let (Rec floatable) (Let (NonRec lhs (
          if null unfloatable then rhs else Let (Rec unfloatable) rhs)) body))
 
-filterBinds' vars binds = filterBinds vars [] (map (\x -> (coreExprFreeIds (snd x), x)) binds)
+filterBinds' vars binds = filterBinds vars [] (map (\x -> (varSetElems $ freeIdsExpr (snd x), x)) binds)
 
 filterBinds :: [Id] -> [(Id, a)]
             -> [([Id]{-free vars-}, (Id{-lhs-}, a{-rhs-}))]
@@ -467,7 +453,7 @@ memoFloatLam = prefixFailMsg "Let floating from Lam failed: " $
      flags <- constT getDynFlags
      constT $ mapM (lookupDef . showPpr flags . fst) binds
      if v1 `elem` (map fst binds)
-     then alphaLam Nothing >>> memoFloatLam
+     then alphaLamR Nothing >>> memoFloatLam
      else let (unfloatable, floatable) = filterBinds' [v1] binds
        in if null floatable
           then fail "no floatable let binds"
@@ -480,19 +466,20 @@ memoFloatLam = prefixFailMsg "Let floating from Lam failed: " $
 memoFloatCase :: RewriteH CoreExpr
 memoFloatCase = prefixFailMsg "Let floating from Case failed: " $
   do flags <- constT getDynFlags
-     caseT letVarsT (const idR) $ \x _ _ _ -> mapM (lookupDef . showPpr flags) x
-     captures <- caseT letVarsT
-                       (\ _ -> altFreeVarsExclWildT)
-                       (\ vs wild _ fs -> vs `intersect` concatMap ($ wild) fs)
-     caseT (if null captures then idR else alphaLetVars captures)
+     caseT letVarsT idR idR (const idR) $ \x _ _ _ -> mapM (lookupDef . showPpr flags) x
+     captures <- caseT letVarsT idR idR
+                       (\ _ -> arr $ varSetElems . freeVarsAlt)
+                       (\ vs wild _ fs -> vs `intersect` concatMap (wild:) fs)
+     caseT (if null captures then idR else alphaLetVarsR captures)
+           idR idR
            (const idR)
            (\ (Let bnds e) wild ty alts -> Let bnds (Case e wild ty alts))
 
 memoFloatCast :: RewriteH CoreExpr
 memoFloatCast = prefixFailMsg "Let floating from Cast failed: " $
   do flags <- constT getDynFlags
-     castT letVarsT $ \x co -> mapM (lookupDef . showPpr flags) x
-     castT (idR) (\ (Let bnds e) co -> Let bnds (Cast e co))
+     castT letVarsT idR $ \x co -> mapM (lookupDef . showPpr flags) x
+     castT idR idR (\ (Let bnds e) co -> Let bnds (Cast e co))
 
 -- | @case (let bnds in e) of wild alts ==> let bnds in (case e of wild alts)@
 --   Fails if any variables bound in @bnds@ occurs in @alts@.
