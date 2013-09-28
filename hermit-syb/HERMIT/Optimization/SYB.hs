@@ -39,7 +39,7 @@ plugin = optimize $ \ opts -> phase 0 $ do
 
 optSYB :: RewriteH Core
 optSYB = do
-    repeatR (onetdR (promoteExprR stashFoldAnyR >>> traceR "!!!!! USED MEMOIZED BINDING !!!!!!")
+    (onetdR (promoteExprR stashFoldAnyR >>> traceR "!!!!! USED MEMOIZED BINDING !!!!!!")
                           <+ traceR "MID" >>> anytdR (repeatR (promoteExprR (
                                                                    rule "append"
                                                                 <+ rule "[]++"
@@ -264,8 +264,18 @@ smarttdR r = modFailMsg ("smarttdR failed: " ++) $ go where
       Type _ -> fail "smarttdR Type"
       Coercion _ -> fail "smarttdR Coercion"
 
+unitT :: Translate c m a ()
+unitT = return ()
+
 eliminatesType :: TH.Name -> TranslateH Core ()
 eliminatesType ty = do
+    dynFlags <- getDynFlags
+    prefixFailMsg ("eliminatesType: " ++ show ty ++ " ") $ do
+        appT unitT inTypeT const
+        <+ castT inTypeT unitT (flip const)
+        <+ caseT inTypeT unitT unitT unitT (\() _ _ _ -> ())
+
+{-
   (ExprCore e) <- idR
   case e of
     Var _ -> fail "vars cannot eliminate types"
@@ -286,11 +296,15 @@ eliminatesType ty = do
                   dynFlags <- constT getDynFlags
                   guardMsg (ty `inType` t) $ " not found in " ++ showPpr dynFlags t ++ "."
                   return ()
+-}
 
 inTypeT :: TH.Name -> TranslateH CoreExpr ()
-inTypeT ty = contextfreeT $ \ e -> do
-    guardMsg (ty `inType` (exprKindOrType e)) " not found."
-    return ()
+inTypeT ty = do
+    dynFlags <- getDynFlags
+    contextfreeT $ \ e -> do
+        let t = exprKindOrType e
+        guardMsg (ty `inType` t) " not found in " ++ showPpr dynFlags t ++ "."
+        return ()
 
 force :: RewriteH CoreExpr
 force = forcePrims []
