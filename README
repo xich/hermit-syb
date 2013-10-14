@@ -14,3 +14,23 @@ hermit Sum.hs -opt=HERMIT.Optimization.SYB +Main mapInt
 hermit Sum.hs -opt=HERMIT.Optimization.SYB +Main mapIntM
 - or -
 hermit Sum.hs -opt=HERMIT.Optimization.SYB +Main mapInt mapIntM
+
+Note about submodules
+=====================
+
+A version of HERMIT that works with this plugin is pegged as
+a submodule, in case the most recent HERMIT does not work.
+When you first clone this repository, you need to:
+
+git submodule init
+git submodule update
+
+to pull down the contents of the submodules.
+
+Whenever you pull new changes that include new submodule hashes, you must:
+
+git submodule update
+
+More information on working with submodules:
+
+http://git-scm.com/book/en/Git-Tools-Submodules
