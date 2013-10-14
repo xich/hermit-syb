@@ -14,28 +14,42 @@ import qualified Data.Map as Map
 import HERMIT.Context
 import HERMIT.Core
 import HERMIT.Dictionary
-import HERMIT.Monad
-import HERMIT.Kure
 import HERMIT.External
-import HERMIT.GHC
+import HERMIT.GHC hiding (display)
+import HERMIT.Kure
+import HERMIT.Monad
 import HERMIT.Optimize
+import HERMIT.Plugin
+import HERMIT.PrettyPrinter.Common
+import HERMIT.Shell.Types
 
 import qualified Language.Haskell.TH as TH
 
 plugin :: Plugin
-plugin = optimize $ \ opts -> phase 0 $ do
+plugin = optimize $ \ opts -> do
+    modifyCLS $ \ st -> st { cl_pretty_opts = updateTypeShowOption Show (cl_pretty_opts st) }
+    at (return $ pathToSnocPath [ModGuts_Prog]) display
+    left <- liftM phasesLeft getPhaseInfo
+    when (notNull left) $ liftIO $ putStrLn $ "=========== " ++ show (head left) ++ " ==========="
+    lastPhase $ do
+        run $ tryR $ promoteR simplifyR
+        run $ tryR $ promoteR unshadowR
+        interactive exts opts
+
+{-
     let (opts', targets) = partition (`elem` ["interactive", "interactive-only"]) opts
     if "interactive-only" `elem` opts'
     then return ()
     else forM_ targets $ \ t -> do
             liftIO $ putStrLn $ "optimizing: " ++ t
             at (rhsOfT $ cmpTHName2Var $ TH.mkName t) $ do
-                run $ optSYB >>> tryR (innermostR $ promoteExprR letrecSubstTrivialR) >>> tryR simplifyR
+                run $ repeatR optSYB >>> tryR (innermostR $ promoteExprR letrecSubstTrivialR) >>> tryR simplifyR
 
     -- pass either interactive or interactive-only flags to dump into a shell at the end
     if null opts'
     then return ()
     else interactive exts []
+-}
 
 optSYB :: RewriteH Core
 optSYB = do
@@ -105,9 +119,9 @@ exts = map ((.+ Experiment) . (.+ TODO)) [
         [ "apply a rewrite twice, in a top-down and bottom-up way, using one single tree traversal",
         "succeeding if any succeed"]
  , external "force" (promoteExprR force :: RewriteH Core)
-        ["cast-elim removes casts"].+ Eval
+        ["force"].+ Eval
  , external "force" (promoteExprR . forcePrims :: [TH.Name] -> RewriteH Core)
-        ["cast-elim removes casts"].+ Eval
+        ["force [Name]"].+ Eval
  , external "memoize" (promoteExprR memoize :: RewriteH Core)
         ["TODO"] .+ Eval .+ Introduce
  , external "opt-syb" (optSYB)
@@ -256,7 +270,7 @@ smarttdR r = modFailMsg ("smarttdR failed: " ++) $ go where
       App _ _ -> pathR [App_Fun] go <+ pathR [App_Arg] go
       Lam _ _ -> pathR [Lam_Body] go
       Let (NonRec _ _) _ -> pathR [Let_Body] go <+ pathR [Let_Bind,NonRec_RHS] go
-      Let (Rec bs) _ -> pathR [Let_Body] go <+ foldr (<+) (fail "smarttdR Let Rec") [ pathR [Let_Bind, Rec_Def i, Def_RHS] go 
+      Let (Rec bs) _ -> pathR [Let_Body] go <+ foldr (<+) (fail "smarttdR Let Rec") [ pathR [Let_Bind, Rec_Def i, Def_RHS] go
                                                                                     | (i, _) <- zip [0..] bs]
       Case _ _ _ as -> pathR [Case_Scrutinee] go <+ foldr (<+) (fail "smarttdR Case") [pathR [Case_Alt i, Alt_RHS] go | (i, _) <- zip [0..] as]
       Cast _ _ -> pathR [Cast_Expr] go
@@ -321,7 +335,7 @@ forceDeep deep prims = do
     Lit _ -> fail "literal is already normal"
     Lam _ _ -> fail "lambda is already normal"
     App _ _ -> promoteExprR (betaReduceR <+ letFloatAppR <+ castFloatAppR) <+
-               (pathT [App_Fun] (promoteExprT (isPrimCall' prims)) 
+               (pathT [App_Fun] (promoteExprT (isPrimCall' prims))
                 >> pathR [App_Arg] (forceDeep True prims)) <+
                pathT [App_Fun] (forceDeep deep prims) <+
                (if deep then pathR [App_Arg] (forceDeep deep prims) else fail "TODO")
