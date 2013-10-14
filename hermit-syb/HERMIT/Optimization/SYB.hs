@@ -27,29 +27,28 @@ import qualified Language.Haskell.TH as TH
 
 plugin :: Plugin
 plugin = optimize $ \ opts -> do
-    modifyCLS $ \ st -> st { cl_pretty_opts = updateTypeShowOption Show (cl_pretty_opts st) }
-    at (return $ pathToSnocPath [ModGuts_Prog]) display
     left <- liftM phasesLeft getPhaseInfo
     when (notNull left) $ liftIO $ putStrLn $ "=========== " ++ show (head left) ++ " ==========="
+{-
+    modifyCLS $ \ st -> st { cl_pretty_opts = updateTypeShowOption Show (cl_pretty_opts st) }
+    at (return $ pathToSnocPath [ModGuts_Prog]) display
     lastPhase $ do
         run $ tryR $ promoteR simplifyR
         run $ tryR $ promoteR unshadowR
         interactive exts opts
-
-{-
+-}
     let (opts', targets) = partition (`elem` ["interactive", "interactive-only"]) opts
     if "interactive-only" `elem` opts'
     then return ()
     else forM_ targets $ \ t -> do
             liftIO $ putStrLn $ "optimizing: " ++ t
-            at (rhsOfT $ cmpTHName2Var $ TH.mkName t) $ do
-                run $ repeatR optSYB >>> tryR (innermostR $ promoteExprR letrecSubstTrivialR) >>> tryR simplifyR
+            at (promoteT $ rhsOfT $ cmpTHName2Var $ TH.mkName t) $ do
+                run $ promoteR $ repeatR optSYB >>> tryR (innermostR $ promoteExprR letrecSubstTrivialR) >>> tryR simplifyR
 
     -- pass either interactive or interactive-only flags to dump into a shell at the end
     if null opts'
     then return ()
     else interactive exts []
--}
 
 optSYB :: RewriteH Core
 optSYB = do
@@ -321,31 +320,19 @@ force :: RewriteH CoreExpr
 force = forcePrims []
 
 forcePrims :: [TH.Name] -> RewriteH CoreExpr
-forcePrims prims = extractR $ forceDeep False prims
+forcePrims prims = forceDeep False prims
 
-forceDeep :: Bool -> [TH.Name] -> RewriteH Core
-forceDeep deep prims = do
-  ExprCore e <- idR
-  case e of
-    -- Core reductions
-    Var _ -> promoteExprR inlineR
-    Lit _ -> fail "literal is already normal"
-    Lam _ _ -> fail "lambda is already normal"
-    App _ _ -> promoteExprR (betaReduceR <+ letFloatAppR <+ castFloatAppR) <+
-               (pathT [App_Fun] (promoteExprT (isPrimCall' prims))
-                >> pathR [App_Arg] (forceDeep True prims)) <+
-               pathT [App_Fun] (forceDeep deep prims) <+
-               (if deep then pathR [App_Arg] (forceDeep deep prims) else fail "TODO")
-    Case _scrut _ _ _ -> pathR [Case_Scrutinee] (forceDeep deep prims) <+ promoteExprR (caseReduceR <+ letFloatCaseR)
-    -- Syntactic noise that we skip over (but may have to float)
-    Let _ _body -> pathR [Let_Body] $ forceDeep deep prims
-    Cast _body _ -> pathR [Cast_Expr] $ forceDeep deep prims
-    -- Errors that we never expect to see
-    Tick _ _ -> fail "unsupported tick in force"
-      {-^ not really an error, I just don't know what to do with it -}
-    Type _ -> fail "unexpected type in force"
-    Coercion _ -> fail "unexpected coercion in force"
--- TODO: better error message on App, etc
+forceDeep :: Bool -> [TH.Name] -> RewriteH CoreExpr
+forceDeep deep prims =
+       inlineR
+    <+ betaReduceR <+ letFloatAppR <+ castFloatAppR
+    <+ (appT (isPrimCall' prims) successT const >> appAllR idR (forceDeep True prims))
+    <+ appAllR (forceDeep deep prims) idR
+    <+ whenM (return deep) (appAllR idR (forceDeep deep prims))
+    <+ caseAllR (forceDeep deep prims) idR idR (const idR) <+ caseReduceR <+ letFloatCaseR
+    <+ letAllR idR (forceDeep deep prims)
+    <+ castAllR (forceDeep deep prims) idR
+    <+ fail "forceDeep failed"
 
 -- TODO: there is probably a built-in for doing this wrapping already but I don't know what it is
 isPrimCall' :: [TH.Name] -> TranslateH CoreExpr ()
@@ -359,20 +346,18 @@ isPrimCall prims (App f _) = isPrimCall prims f
 isPrimCall _ _ = False
 
 memoize :: RewriteH CoreExpr
-memoize = do
-  e <- idR
-  case collectArgs e of
-    (Var v,args) -> do
-      --e' <- extractR (pathR (replicate (length args) 0) (promoteR {-force-} inline) :: RewriteH Core)
-      e' <- force
-      v' <- constT $ newIdH ("memo_"++getOccString v) (exprType e)
-      flags <- constT $ getDynFlags
-      constT $ saveDef (showPpr flags v') (Def v' e)
-      --cleanupUnfold
-      --e' <- idR
-      --e' <- translate $ \env _ -> apply (extractR inline) env (Var v)
-      return (Let (Rec [(v', e')]) (Var v'))
-    _ -> fail "memoize failed"
+memoize = prefixFailMsg "memoize failed: " $ do
+    e <- idR
+    (Var v, args) <- callT
+    --e' <- extractR (pathR (replicate (length args) 0) (promoteR {-force-} inline) :: RewriteH Core)
+    e' <- force
+    v' <- constT $ newIdH ("memo_"++getOccString v) (exprType e)
+    flags <- constT $ getDynFlags
+    constT $ saveDef (showPpr flags v') (Def v' e)
+    --cleanupUnfold
+    --e' <- idR
+    --e' <- translate $ \env _ -> apply (extractR inline) env (Var v)
+    return (Let (Rec [(v', e')]) (Var v'))
 
 -------------------------------------------------------------------------------------------
 
