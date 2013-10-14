@@ -80,7 +80,7 @@ optSYB = do
                                                            <+ memoFloatCast
                                                            <+ memoFloatAlt)
                                                           >>> traceR "FLOATING"))
-                                              <+ smarttdR ((>>) (eliminatesType (TH.mkName "Data")
+                                              <+ smarttdR (promoteExprR ((>>) (eliminatesType (TH.mkName "Data")
                                                                   <+ eliminatesType (TH.mkName "Typeable")
                                                                   <+ eliminatesType (TH.mkName "Typeable1")
                                                                   <+ eliminatesType (TH.mkName "TypeRep")
@@ -88,9 +88,9 @@ optSYB = do
                                                                   <+ eliminatesType (TH.mkName "ID")
                                                                   <+ eliminatesType (TH.mkName "Qr")
                                                                   <+ eliminatesType (TH.mkName "Fingerprint"))
-                                                                 ((promoteExprR memoize >>> traceR "MEMOIZING")
-                                                                  <+ (promoteExprR (forcePrims [TH.mkName "fingerprintFingerprints", TH.mkName "eqWord#"])
-                                                                      >>> traceR "FORCING"))))
+                                                                 ((memoize >>> traceR "MEMOIZING")
+                                                                  <+ ((forcePrims [TH.mkName "fingerprintFingerprints", TH.mkName "eqWord#"])
+                                                                      >>> traceR "FORCING")))))
 
 exts ::  [External]
 exts = map ((.+ Experiment) . (.+ TODO)) [
@@ -113,7 +113,7 @@ exts = map ((.+ Experiment) . (.+ TODO)) [
  , external "eval-fingerprintFingerprints" (promoteExprR evalFingerprintFingerprints :: RewriteH Core)
         ["replaces 'fingerprintFingerprints [f1,f2,...]' with its value."
         ,"Requires that f1,f2,... are literals."] .+ Shallow .+ Eval
- , external "eliminates-type" (eliminatesType)
+ , external "eliminates-type" (promoteExprT . eliminatesType :: TH.Name -> TranslateH Core ())
         ["determines whether evaluating the term "] .+ Shallow
  , external "smart-td" (smarttdR)
         [ "apply a rewrite twice, in a top-down and bottom-up way, using one single tree traversal",
@@ -278,16 +278,13 @@ smarttdR r = modFailMsg ("smarttdR failed: " ++) $ go where
       Type _ -> fail "smarttdR Type"
       Coercion _ -> fail "smarttdR Coercion"
 
-unitT :: Translate c m a ()
-unitT = return ()
-
-eliminatesType :: TH.Name -> TranslateH Core ()
+eliminatesType :: TH.Name -> TranslateH CoreExpr ()
 eliminatesType ty = do
-    dynFlags <- getDynFlags
+    dynFlags <- constT getDynFlags
     prefixFailMsg ("eliminatesType: " ++ show ty ++ " ") $ do
-        appT unitT inTypeT const
-        <+ castT inTypeT unitT (flip const)
-        <+ caseT inTypeT unitT unitT unitT (\() _ _ _ -> ())
+        appT successT (inTypeT ty) const
+        <+ castT (inTypeT ty) successT (flip const)
+        <+ caseT (inTypeT ty) successT successT (const successT) (\() _ _ _ -> ())
 
 {-
   (ExprCore e) <- idR
@@ -314,10 +311,10 @@ eliminatesType ty = do
 
 inTypeT :: TH.Name -> TranslateH CoreExpr ()
 inTypeT ty = do
-    dynFlags <- getDynFlags
+    dynFlags <- constT getDynFlags
     contextfreeT $ \ e -> do
         let t = exprKindOrType e
-        guardMsg (ty `inType` t) " not found in " ++ showPpr dynFlags t ++ "."
+        guardMsg (ty `inType` t) $ " not found in " ++ showPpr dynFlags t ++ "."
         return ()
 
 force :: RewriteH CoreExpr
