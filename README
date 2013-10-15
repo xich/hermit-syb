@@ -1,7 +1,7 @@
-Currently, this transformation fails due to Core Lint on some target
-programs. This appears to be due to recent changes in the HERMIT API,
-and we will have a fix soon. In the meantime, the transformation does
-work on Sum.hs and some of the benchmarks.
+Due to recent changes in the HERMIT API, this code currently breaks with
+a Core Lint error on some target programs.  We are working to update the
+code to work with the latest HERMIT.  In the meantime, the transformation
+does work on Sum.hs and some of the benchmarks.
 
 You need HERMIT built on GHC HEAD to run these. Follow the directions here:
 
