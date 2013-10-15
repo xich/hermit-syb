@@ -26,17 +26,7 @@ import HERMIT.Shell.Types
 import qualified Language.Haskell.TH as TH
 
 plugin :: Plugin
-plugin = optimize $ \ opts -> do
-    left <- liftM phasesLeft getPhaseInfo
-    when (notNull left) $ liftIO $ putStrLn $ "=========== " ++ show (head left) ++ " ==========="
-{-
-    modifyCLS $ \ st -> st { cl_pretty_opts = updateTypeShowOption Show (cl_pretty_opts st) }
-    at (return $ pathToSnocPath [ModGuts_Prog]) display
-    lastPhase $ do
-        run $ tryR $ promoteR simplifyR
-        run $ tryR $ promoteR unshadowR
-        interactive exts opts
--}
+plugin = optimize $ \ opts -> phase 0 $ do
     let (opts', targets) = partition (`elem` ["interactive", "interactive-only"]) opts
     if "interactive-only" `elem` opts'
     then return ()
@@ -195,10 +185,9 @@ inType name ty = go ty where
 
 eqWordElim :: RewriteH CoreExpr
 eqWordElim = do
-  (App (App (Var v) (Lit l1)) (Lit l2)) <- idR
-  eqWordId <- findIdT (TH.mkName "GHC.Prim.eqWord#")
-  guardMsg (v == eqWordId) (var2String v ++ " does not match " ++ "GHC.Prim.eqWord#")
-  liftM Var (findIdT (TH.mkName (if l1 == l2 then "GHC.Types.True" else "GHC.Types.False")))
+    (Var v, [Lit l1, Lit l2]) <- callNameT $ TH.mkName "GHC.Prim.eqWord#"
+    dflags <- constT getDynFlags
+    return $ mkIntLitInt dflags $ if l1 == l2 then 1 else 0
 
 varInfo2 :: TH.Name -> TranslateH Core String
 varInfo2 nm = translate $ \ c e ->
