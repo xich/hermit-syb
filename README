@@ -1,5 +1,9 @@
-You need HERMIT built on a GHC HEAD that is patched against a
-space leak to run these. Follow the directions here:
+Currently, this transformation fails due to Core Lint on some target
+programs. This appears to be due to recent changes in the HERMIT API,
+and we will have a fix soon. In the meantime, the transformation does
+work on Sum.hs and some of the benchmarks.
+
+You need HERMIT built on GHC HEAD to run these. Follow the directions here:
 
 https://github.com/ku-fpg/hermit/wiki/GHC-HEAD
 
