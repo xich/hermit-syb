@@ -26,60 +26,60 @@ import HERMIT.Shell.Types
 import qualified Language.Haskell.TH as TH
 
 plugin :: Plugin
-plugin = optimize $ \ opts -> phase 0 $ do
+plugin = optimize $ \ opts -> do
     let (opts', targets) = partition (`elem` ["interactive", "interactive-only"]) opts
-    if "interactive-only" `elem` opts'
-    then return ()
-    else forM_ targets $ \ t -> do
-            liftIO $ putStrLn $ "optimizing: " ++ t
-            at (promoteT $ rhsOfT $ cmpTHName2Var $ TH.mkName t) $ do
-                run $ promoteR $ repeatR optSYB >>> tryR (innermostR $ promoteExprR letrecSubstTrivialR) >>> tryR simplifyR
+    phase 0 $ do
+        unless ("interactive-only" `elem` opts') $ do
+            forM_ targets $ \ t -> do
+                liftIO $ putStrLn $ "optimizing: " ++ t
+                at (promoteT $ rhsOfT $ cmpTHName2Var $ TH.mkName t) $ do
+                    run $ promoteR $ repeatR optSYB >>> tryR (innermostR $ promoteExprR letrecSubstTrivialR) >>> tryR simplifyR
 
     -- pass either interactive or interactive-only flags to dump into a shell at the end
-    if null opts'
-    then return ()
-    else interactive exts []
+    unless (null opts') $ after Simplify $ interactive exts []
+
+optSimp :: RewriteH Core
+optSimp = anytdR (repeatR (promoteExprR (   rule "append"
+                                         <+ rule "[]++"
+                                         <+ castElimReflR
+                                         <+ castElimSymPlusR
+                                         <+ letElimR
+                                         <+ letSubstType (TH.mkName "*")
+                                         <+ letSubstType (TH.mkName "BOX")
+                                         <+ evalFingerprintFingerprints
+                                         <+ eqWordElim
+                                         <+ letSubstTrivialR
+                                         <+ caseReduceR)
+                                            >>> traceR "SIMPLIFYING"))
+
+optFloat :: RewriteH Core
+optFloat = anybuR (promoteExprR ((   memoFloatMemoLet
+                                  <+ memoFloatMemoBind
+                                  <+ memoFloatApp
+                                  <+ memoFloatArg
+                                  <+ memoFloatLam
+                                  <+ memoFloatLet
+                                  <+ memoFloatBind
+                                  <+ memoFloatRecBind
+                                  <+ memoFloatCase
+                                  <+ memoFloatCast
+                                  <+ memoFloatAlt)
+                                     >>> traceR "FLOATING"))
+
+optMemo :: RewriteH Core
+optMemo = smarttdR $ promoteExprR $ (>>) (   eliminatesType (TH.mkName "Data")
+                                          <+ eliminatesType (TH.mkName "Typeable")
+                                          <+ eliminatesType (TH.mkName "Typeable1")
+                                          <+ eliminatesType (TH.mkName "TypeRep")
+                                          <+ eliminatesType (TH.mkName "TyCon")
+                                          <+ eliminatesType (TH.mkName "ID")
+                                          <+ eliminatesType (TH.mkName "Qr")
+                                          <+ eliminatesType (TH.mkName "Fingerprint"))
+                                         (   bracketR "MEMOIZING" memoize
+                                          <+ (forcePrims [TH.mkName "fingerprintFingerprints", TH.mkName "eqWord#"] >>> traceR "FORCING"))
 
 optSYB :: RewriteH Core
-optSYB = do
-    (onetdR (promoteExprR stashFoldAnyR >>> traceR "!!!!! USED MEMOIZED BINDING !!!!!!")
-                          <+ traceR "MID" >>> anytdR (repeatR (promoteExprR (
-                                                                   rule "append"
-                                                                <+ rule "[]++"
-                                                                <+ castElimReflR
-                                                                <+ castElimSymPlusR
-                                                                <+ letElimR
-                                                                <+ letSubstType (TH.mkName "*")
-                                                                <+ letSubstType (TH.mkName "BOX")
-                                                                <+ evalFingerprintFingerprints
-                                                                <+ eqWordElim
-                                                                <+ letSubstTrivialR
-                                                                <+ caseReduceR)
-                                                               >>> traceR "SIMPLIFYING"))
-                                              <+ anybuR (promoteExprR ((
-                                                              memoFloatMemoLet
-                                                           <+ memoFloatMemoBind
-                                                           <+ memoFloatApp
-                                                           <+ memoFloatArg
-                                                           <+ memoFloatLam
-                                                           <+ memoFloatLet
-                                                           <+ memoFloatBind
-                                                           <+ memoFloatRecBind
-                                                           <+ memoFloatCase
-                                                           <+ memoFloatCast
-                                                           <+ memoFloatAlt)
-                                                          >>> traceR "FLOATING"))
-                                              <+ smarttdR (promoteExprR ((>>) (eliminatesType (TH.mkName "Data")
-                                                                  <+ eliminatesType (TH.mkName "Typeable")
-                                                                  <+ eliminatesType (TH.mkName "Typeable1")
-                                                                  <+ eliminatesType (TH.mkName "TypeRep")
-                                                                  <+ eliminatesType (TH.mkName "TyCon")
-                                                                  <+ eliminatesType (TH.mkName "ID")
-                                                                  <+ eliminatesType (TH.mkName "Qr")
-                                                                  <+ eliminatesType (TH.mkName "Fingerprint"))
-                                                                 ((memoize >>> traceR "MEMOIZING")
-                                                                  <+ ((forcePrims [TH.mkName "fingerprintFingerprints", TH.mkName "eqWord#"])
-                                                                      >>> traceR "FORCING")))))
+optSYB = onetdR (promoteExprR (bracketR "!!!!! USED MEMOIZED BINDING !!!!!" stashFoldAnyR)) <+ optSimp <+ optFloat <+ optMemo
 
 exts ::  [External]
 exts = map ((.+ Experiment) . (.+ TODO)) [
@@ -113,32 +113,34 @@ exts = map ((.+ Experiment) . (.+ TODO)) [
         ["force [Name]"].+ Eval
  , external "memoize" (promoteExprR memoize :: RewriteH Core)
         ["TODO"] .+ Eval .+ Introduce
- , external "opt-syb" (optSYB)
-        ["TODO"] .+ Eval .+ Introduce
-         , external "memo-float-app" (promoteExprR memoFloatApp :: RewriteH Core)
-                     [ "(let v = ev in e) x ==> let v = ev in e x" ]                    .+ Commute .+ Shallow
-         , external "memo-float-arg" (promoteExprR memoFloatArg :: RewriteH Core)
-                     [ "f (let v = ev in e) ==> let v = ev in f e" ]                    .+ Commute .+ Shallow
-         , external "memo-float-lam" (promoteExprR memoFloatLam :: RewriteH Core)
-                     [ "(\\ v1 -> let v2 = e1 in e2)  ==>  let v2 = e1 in (\\ v1 -> e2), if v1 is not free in e2.",
-                       "If v1 = v2 then v1 will be alpha-renamed."
-                     ]                                                                  .+ Commute .+ Shallow
-         , external "memo-float-memo-let" (promoteExprR memoFloatMemoLet :: RewriteH Core)
-                     [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow
-         , external "memo-float-memo-bind" (promoteExprR memoFloatMemoBind :: RewriteH Core)
-                     [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow
-         , external "memo-float-let" (promoteExprR memoFloatLet :: RewriteH Core)
-                     [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow
-         , external "memo-float-bind" (promoteExprR memoFloatBind :: RewriteH Core)
-                     [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow
-         , external "memo-float-rec-bind" (promoteExprR memoFloatRecBind :: RewriteH Core)
-                     [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow
-         , external "memo-float-case" (promoteExprR memoFloatCase :: RewriteH Core)
-                     [ "case (let v = ev in e) of ... ==> let v = ev in case e of ..." ]  .+ Commute .+ Shallow .+ Eval
-         , external "memo-float-cast" (promoteExprR memoFloatCast :: RewriteH Core)
-                     [ "case (let v = ev in e) of ... ==> let v = ev in case e of ..." ]  .+ Commute .+ Shallow .+ Eval
-         , external "memo-float-alt" (promoteExprR memoFloatAlt :: RewriteH Core)
-                     [ "case (let v = ev in e) of ... ==> let v = ev in case e of ..." ]  .+ Commute .+ Shallow .+ Eval
+ , external "opt-syb"   optSYB   ["TODO"] .+ Eval .+ Introduce
+ , external "opt-simp"  optSimp  ["TODO"] .+ Eval .+ Introduce
+ , external "opt-float" optFloat ["TODO"] .+ Eval .+ Introduce
+ , external "opt-memo"  optMemo  ["TODO"] .+ Eval .+ Introduce
+ , external "memo-float-app" (promoteExprR memoFloatApp :: RewriteH Core)
+             [ "(let v = ev in e) x ==> let v = ev in e x" ]                    .+ Commute .+ Shallow
+ , external "memo-float-arg" (promoteExprR memoFloatArg :: RewriteH Core)
+             [ "f (let v = ev in e) ==> let v = ev in f e" ]                    .+ Commute .+ Shallow
+ , external "memo-float-lam" (promoteExprR memoFloatLam :: RewriteH Core)
+             [ "(\\ v1 -> let v2 = e1 in e2)  ==>  let v2 = e1 in (\\ v1 -> e2), if v1 is not free in e2.",
+               "If v1 = v2 then v1 will be alpha-renamed."
+             ]                                                                  .+ Commute .+ Shallow
+ , external "memo-float-memo-let" (promoteExprR memoFloatMemoLet :: RewriteH Core)
+             [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow
+ , external "memo-float-memo-bind" (promoteExprR memoFloatMemoBind :: RewriteH Core)
+             [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow
+ , external "memo-float-let" (promoteExprR memoFloatLet :: RewriteH Core)
+             [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow
+ , external "memo-float-bind" (promoteExprR memoFloatBind :: RewriteH Core)
+             [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow
+ , external "memo-float-rec-bind" (promoteExprR memoFloatRecBind :: RewriteH Core)
+             [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow
+ , external "memo-float-case" (promoteExprR memoFloatCase :: RewriteH Core)
+             [ "case (let v = ev in e) of ... ==> let v = ev in case e of ..." ]  .+ Commute .+ Shallow .+ Eval
+ , external "memo-float-cast" (promoteExprR memoFloatCast :: RewriteH Core)
+             [ "case (let v = ev in e) of ... ==> let v = ev in case e of ..." ]  .+ Commute .+ Shallow .+ Eval
+ , external "memo-float-alt" (promoteExprR memoFloatAlt :: RewriteH Core)
+             [ "case (let v = ev in e) of ... ==> let v = ev in case e of ..." ]  .+ Commute .+ Shallow .+ Eval
  ]
 
 letSubstTrivialR :: RewriteH CoreExpr
