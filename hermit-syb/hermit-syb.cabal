@@ -13,7 +13,7 @@ library
         base,
         ghc >= 7.6,
         ghc-prim,
-        hermit,
+        hermit >= 0.3.2.0,
         syb,
         template-haskell,
         containers

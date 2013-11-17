@@ -145,18 +145,18 @@ exts = map ((.+ Experiment) . (.+ TODO)) [
 
 letSubstTrivialR :: RewriteH CoreExpr
 letSubstTrivialR = prefixFailMsg "Let substition failed: " $ do
-  rewrite $ \ c expr -> case expr of
-    Let (NonRec b be@(Var _)) e -> apply (substExprR b be) c e
-    Let (NonRec b be@(Lit _)) e -> apply (substExprR b be) c e
+  contextfreeT $ \ expr -> case expr of
+    Let (NonRec b be@(Var _)) e -> return $ substCoreExpr b be e
+    Let (NonRec b be@(Lit _)) e -> return $ substCoreExpr b be e
     _ -> fail $ "expression is not a trivial, non-recursive Let."
 
 letrecSubstTrivialR :: RewriteH CoreExpr
 letrecSubstTrivialR = prefixFailMsg "Letrec substition failed: " $ do
-  rewrite $ \ c expr -> case expr of
+  contextfreeT $ \ expr -> case expr of
     Let (Rec bs) e
       | Just (b, be, bs', e') <- findTrivial e [] bs -> do
-        bs'' <- mapM (apply (substExprR b be) c . snd) bs'
-        e'' <- apply (substExprR b be) c e'
+        let bs'' = map (substCoreExpr b be . snd) bs'
+            e'' = substCoreExpr b be e'
         return (Let (Rec (zip (map fst bs') bs'')) e'')
     _ -> fail $ "expression is not a trivial, recursive Let."
 
