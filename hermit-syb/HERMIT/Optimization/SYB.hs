@@ -1,4 +1,4 @@
-{-# LANGUAGE DoAndIfThenElse #-} -- why do we need this?
+{-# LANGUAGE DoAndIfThenElse, CPP #-} -- why do we need this?
 module HERMIT.Optimization.SYB where
 
 import qualified Outputable (showSDocDebug)
@@ -188,8 +188,12 @@ inType name ty = go ty where
 eqWordElim :: RewriteH CoreExpr
 eqWordElim = do
     (Var v, [Lit l1, Lit l2]) <- callNameT $ TH.mkName "GHC.Prim.eqWord#"
+#if __GLASGOW_HASKELL__ <= 706
+    return $ mkIntLitInt $ if l1 == l2 then 1 else 0
+#else
     dflags <- constT getDynFlags
     return $ mkIntLitInt dflags $ if l1 == l2 then 1 else 0
+#endif
 
 varInfo2 :: TH.Name -> TranslateH Core String
 varInfo2 nm = translate $ \ c e ->
@@ -218,10 +222,10 @@ evalFingerprintFingerprints = do
   --nil <- findIdT (TH.mkName "GHC.Types.[]")
   --cons <- findIdT (TH.mkName "GHC.Types.(:)")
   guardMsg (v == v') (var2String v ++ " does not match " ++ "fingerprintFingerprints")
-  let getFingerprints (App (Var nil') _) {- | nil' == nil-} = return []
-      getFingerprints (Var cons' `App` _ `App` f `App` fs) {-| cons' == cons-} = liftM2 (:) f' (getFingerprints fs) where
+  let getFingerprints (App (Var nil') _) {- - | nil' == nil -} = return []
+      getFingerprints (Var cons' `App` _ `App` f `App` fs) {- - | cons' == cons-} = liftM2 (:) f' (getFingerprints fs) where
          f' = case f of (Var ctor' `App` (Lit (MachWord w1)) `App` (Lit (MachWord w2)))
-                            {-| ctor' == ctor-} -> return (Fingerprint (fromIntegral w1) (fromIntegral w2))
+                            {- - | ctor' == ctor-} -> return (Fingerprint (fromIntegral w1) (fromIntegral w2))
                         _ -> fail ("Non-literal fingerprint as argument:"++gshow f)
       getFingerprints a = fail ("Non-list as argument:"++gshow a)
   fingerprints <- getFingerprints args
