@@ -56,7 +56,7 @@ Library
         HERMIT.Optimization.SYB
         HERMIT.Optimization.SYB.Prelude
     Build-depends:
-        base,
+        base == 4.*,
         ghc >= 7.6,
         ghc-prim,
         hermit >= 0.3.2.0,
