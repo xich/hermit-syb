@@ -35,13 +35,13 @@ Description:
   .
   This invokes GHC with a specific set of flags. These flags may be used instead of the 'hermit' program itself, or placed in a cabal file.
   .
-  The first argument to HERMIT is the target file. Next is the -opt flag, which specifies the plugin name. 
+  The first argument to HERMIT is the target file. Next is the -opt flag, which specifies the plugin name.
   Then follows one or more target module names, each beginning with a plus sign. After each target module is a list of targeted functions.
   The distinguished 'interactive' target will run the optimization on any other targets and then enter the HERMIT interactive shell.
-  The distinguished 'interactive-only' target will open the HERMIT shell before optimization. 
+  The distinguished 'interactive-only' target will open the HERMIT shell before optimization.
   HERMIT commands specific to this optimization are available for interactive use.
-   
-Category:            Language, Optimization, Transformation 
+
+Category:            Language, Optimization, Transformation
 License:             BSD3
 License-file:        LICENSE
 Author:              Michael D. Adams and Andrew Farmer
@@ -57,9 +57,9 @@ Library
         HERMIT.Optimization.SYB.Prelude
     Build-depends:
         base == 4.*,
-        ghc >= 7.6,
+        ghc >= 7.8,
         ghc-prim,
-        hermit >= 0.3.2.0,
+        hermit >= 0.5.0.0,
         syb,
         template-haskell,
         containers

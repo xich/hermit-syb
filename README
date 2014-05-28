@@ -1,4 +1,5 @@
-You need HERMIT built on GHC HEAD to run these. Follow the directions here:
+You need GHC >= 7.8, with specially compiled base/ghc-prim/syb libraries,
+in order to run the optimization. Instructions:
 
 https://github.com/ku-fpg/hermit/wiki/GHC-HEAD
 
@@ -7,6 +8,8 @@ Once that is done:
 cd hermit-syb
 cabal install
 cd ..
+
+cabal install haskell-src (for Sum.hs only)
 
 hermit Sum.hs -opt=HERMIT.Optimization.SYB +Main mapInt
 - or -

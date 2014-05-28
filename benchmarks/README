@@ -1,18 +1,8 @@
-To run the SYBOPT tests, you need HERMIT built on a GHC HEAD that is patched to
-avoid a space leak. This has still not been merged upstream, but hopefully soon.
-For now, follow (all of) the instructions here:
-
-https://github.com/ku-fpg/hermit/wiki/GHC-HEAD
+To run the SYBOPT tests, you need to install the hermit-syb plugin, with
+modified base libraries that expose the right unfoldings, if you haven't
+already. See ../README
 
 You also need to cabal install parseargs and parallel.
-
-Once that is done, cabal install the syb optimization. You can find it in the:
-
-../hermit-syb
-
-directory. Simply enter that directory and type:
-
-cabal install
 
 Now to actually run the benchmarks:
 

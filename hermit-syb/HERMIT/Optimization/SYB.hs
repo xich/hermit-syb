@@ -18,38 +18,34 @@ import HERMIT.External
 import HERMIT.GHC hiding (display)
 import HERMIT.Kure
 import HERMIT.Monad
-import HERMIT.Optimize
+import HERMIT.Plugin.Builder
 import HERMIT.Plugin
-import HERMIT.PrettyPrinter.Common
-import HERMIT.Shell.Types
-
-import qualified Language.Haskell.TH as TH
 
 plugin :: Plugin
-plugin = optimize $ \ opts -> do
+plugin = hermitPlugin $ \ opts -> do
     let (opts', targets) = partition (`elem` ["interactive", "interactive-only"]) opts
     phase 0 $ do
         unless ("interactive-only" `elem` opts') $ do
             forM_ targets $ \ t -> do
                 liftIO $ putStrLn $ "optimizing: " ++ t
-                at (promoteT $ rhsOfT $ cmpTHName2Var $ TH.mkName t) $ do
-                    run $ promoteR $ repeatR optSYB >>> tryR (innermostR $ promoteExprR letrecSubstTrivialR) >>> tryR simplifyR
+                at (promoteT $ rhsOfT $ cmpString2Var t) $ do
+                    run $ repeatR optSYB >>> tryR (innermostR $ promoteExprR letrecSubstTrivialR) >>> tryR simplifyR
 
     -- pass either interactive or interactive-only flags to dump into a shell at the end
     unless (null opts') $ after Simplify $ interactive exts []
 
 optSimp :: RewriteH Core
-optSimp = anytdR (repeatR (promoteExprR (   rule "append"
-                                         <+ rule "[]++"
+optSimp = anytdR (repeatR (promoteExprR (   ruleR "append"
+                                         <+ ruleR "[]++"
                                          <+ castElimReflR
                                          <+ castElimSymPlusR
                                          <+ letElimR
-                                         <+ letSubstType (TH.mkName "*")
-                                         <+ letSubstType (TH.mkName "BOX")
+                                         <+ letSubstType "*"
+                                         <+ letSubstType "BOX"
                                          <+ evalFingerprintFingerprints
                                          <+ eqWordElim
                                          <+ letSubstTrivialR
-                                         <+ caseReduceR)
+                                         <+ caseReduceR False)
                                             >>> traceR "SIMPLIFYING"))
 
 optFloat :: RewriteH Core
@@ -67,16 +63,16 @@ optFloat = anybuR (promoteExprR ((   memoFloatMemoLet
                                      >>> traceR "FLOATING"))
 
 optMemo :: RewriteH Core
-optMemo = smarttdR $ promoteExprR $ (>>) (   eliminatesType (TH.mkName "Data")
-                                          <+ eliminatesType (TH.mkName "Typeable")
-                                          <+ eliminatesType (TH.mkName "Typeable1")
-                                          <+ eliminatesType (TH.mkName "TypeRep")
-                                          <+ eliminatesType (TH.mkName "TyCon")
-                                          <+ eliminatesType (TH.mkName "ID")
-                                          <+ eliminatesType (TH.mkName "Qr")
-                                          <+ eliminatesType (TH.mkName "Fingerprint"))
+optMemo = smarttdR $ promoteExprR $ (>>) (   eliminatesType "Data"
+                                          <+ eliminatesType "Typeable"
+                                          <+ eliminatesType "Typeable1"
+                                          <+ eliminatesType "TypeRep"
+                                          <+ eliminatesType "TyCon"
+                                          <+ eliminatesType "ID"
+                                          <+ eliminatesType "Qr"
+                                          <+ eliminatesType "Fingerprint")
                                          (   bracketR "MEMOIZING" memoize
-                                          <+ (forcePrims [TH.mkName "fingerprintFingerprints", TH.mkName "eqWord#"] >>> traceR "FORCING"))
+                                          <+ (forcePrims ["fingerprintFingerprints", "eqWord#"] >>> traceR "FORCING"))
 
 optSYB :: RewriteH Core
 optSYB = onetdR (promoteExprR (bracketR "!!!!! USED MEMOIZED BINDING !!!!!" stashFoldAnyR)) <+ optSimp <+ optFloat <+ optMemo
@@ -91,7 +87,7 @@ exts = map ((.+ Experiment) . (.+ TODO)) [
        [ "Let substitution (but only if e1 is a variable or literal)"
        , "let x = e1 in e2 ==> e2[e1/x]"
        , "x must not be free in e1." ] .+ Deep
- , external "let-subst-type" (promoteExprR . letSubstType :: TH.Name -> RewriteH Core)
+ , external "let-subst-type" (promoteExprR . letSubstType :: String -> RewriteH Core)
        [ "Let substitution (but only if the type of e1 contains the given type)"
        , "(\"let-subst-type '*\" is especially useful to eliminate bindings for types)"
        , "(let x = e1 in e2) ==> (e2[e1/x])"
@@ -102,14 +98,14 @@ exts = map ((.+ Experiment) . (.+ TODO)) [
  , external "eval-fingerprintFingerprints" (promoteExprR evalFingerprintFingerprints :: RewriteH Core)
         ["replaces 'fingerprintFingerprints [f1,f2,...]' with its value."
         ,"Requires that f1,f2,... are literals."] .+ Shallow .+ Eval
- , external "eliminates-type" (promoteExprT . eliminatesType :: TH.Name -> TranslateH Core ())
+ , external "eliminates-type" (promoteExprT . eliminatesType :: String -> TransformH Core ())
         ["determines whether evaluating the term "] .+ Shallow
  , external "smart-td" (smarttdR)
         [ "apply a rewrite twice, in a top-down and bottom-up way, using one single tree traversal",
         "succeeding if any succeed"]
  , external "force" (promoteExprR force :: RewriteH Core)
         ["force"].+ Eval
- , external "force" (promoteExprR . forcePrims :: [TH.Name] -> RewriteH Core)
+ , external "force" (promoteExprR . forcePrims :: [String] -> RewriteH Core)
         ["force [Name]"].+ Eval
  , external "memoize" (promoteExprR memoize :: RewriteH Core)
         ["TODO"] .+ Eval .+ Introduce
@@ -167,8 +163,8 @@ findTrivial e bs' ((b,be) : bs) =
     Lit _ -> Just (b, be, bs' ++ bs, e)
     _ -> findTrivial e (bs'++[(b,be)]) bs
 
-letSubstType :: TH.Name -> RewriteH CoreExpr
-letSubstType ty = prefixFailMsg ("letSubstType '" ++ TH.nameBase ty ++ " failed: ") $
+letSubstType :: String -> RewriteH CoreExpr
+letSubstType ty = prefixFailMsg ("letSubstType '" ++ ty ++ " failed: ") $
                   {-withPatFailMsg (wrongExprForm "Let (NonRec lhs rhs) body") $-}
    do Let (NonRec lhs rhs) body <- idR
       let t = exprKindOrType rhs
@@ -176,18 +172,18 @@ letSubstType ty = prefixFailMsg ("letSubstType '" ++ TH.nameBase ty ++ " failed:
       guardMsg (ty `inType` t) $ " not found in " ++ showPpr dynFlags t ++ "."
       letSubstR
 
-inType :: TH.Name -> Type -> Bool
+inType :: String -> Type -> Bool
 inType name ty = go ty where
  go (TyVarTy _) = False
  go (AppTy t1 t2) = go t1 || go t2
- go (TyConApp ctor args) = name `cmpTHName2Name` tyConName ctor || any (go) args
+ go (TyConApp ctor args) = name `cmpString2Name` tyConName ctor || any (go) args
  go (FunTy t1 t2) = go t1 || go t2
  go (ForAllTy _ t) = go t
 
 
 eqWordElim :: RewriteH CoreExpr
 eqWordElim = do
-    (Var v, [Lit l1, Lit l2]) <- callNameT $ TH.mkName "GHC.Prim.eqWord#"
+    (Var v, [Lit l1, Lit l2]) <- callNameT "GHC.Prim.eqWord#"
 #if __GLASGOW_HASKELL__ <= 706
     return $ mkIntLitInt $ if l1 == l2 then 1 else 0
 #else
@@ -195,9 +191,9 @@ eqWordElim = do
     return $ mkIntLitInt dflags $ if l1 == l2 then 1 else 0
 #endif
 
-varInfo2 :: TH.Name -> TranslateH Core String
+varInfo2 :: String -> TransformH Core String
 varInfo2 nm = translate $ \ c e ->
-  case filter (cmpTHName2Var nm) $ Map.keys (hermitBindings c) of
+  case filter (cmpString2Var nm) $ Map.keys (hermitBindings c) of
          []  -> fail "cannot find name."
          [i] -> do dynFlags <- getDynFlags
                    return ("Type or Kind: " ++ (showPpr dynFlags . exprKindOrType) (Var i))
@@ -214,13 +210,11 @@ evalFingerprintFingerprints = do
   dynFlags <- constT getDynFlags
   App (Var v) args <- idR
   --trace ("looking at: "++ showPpr dynFlags v) $ return ()
-  v' <- findIdT (TH.mkName "fingerprintFingerprints")
+  v' <- findIdT "fingerprintFingerprints"
   --trace ("binding: "++showPpr dynFlags v') $ return ()
-  ctor <- findIdT (TH.mkName "Fingerprint")
+  ctor <- findIdT "Fingerprint"
   --trace ("ctor: "++showPpr dynFlags ctor) $ return ()
-  w64 <- findIdT (TH.mkName "GHC.Word.W64#")
-  --nil <- findIdT (TH.mkName "GHC.Types.[]")
-  --cons <- findIdT (TH.mkName "GHC.Types.(:)")
+  w64 <- findIdT "GHC.Word.W64#"
   guardMsg (v == v') (var2String v ++ " does not match " ++ "fingerprintFingerprints")
   let getFingerprints (App (Var nil') _) {- - | nil' == nil -} = return []
       getFingerprints (Var cons' `App` _ `App` f `App` fs) {- - | cons' == cons-} = liftM2 (:) f' (getFingerprints fs) where
@@ -233,7 +227,7 @@ evalFingerprintFingerprints = do
   return (Var ctor `App` (Var w64 `App` Lit (MachWord (toInteger w1))) `App` (Var w64 `App` Lit (MachWord (toInteger w2))))
   --return (Var ctor `App` (Lit (MachWord (toInteger w1))) `App` (Lit (MachWord (toInteger w2))))
 
-isMemoizedLet :: TranslateH Core ()
+isMemoizedLet :: TransformH Core ()
 isMemoizedLet = do
   e <- idR
   case e of
@@ -243,8 +237,8 @@ isMemoizedLet = do
       return ()
     _ -> fail "not a memoized let"
 
-inlineType :: TH.Name -> RewriteH CoreExpr
-inlineType ty = prefixFailMsg ("inlineType '" ++ TH.nameBase ty ++ " failed: ") $
+inlineType :: String -> RewriteH CoreExpr
+inlineType ty = prefixFailMsg ("inlineType '" ++ ty ++ " failed: ") $
                 withPatFailMsg (wrongExprForm "Var v") $
    do Var v <- idR
       let t = (exprKindOrType (Var v))
@@ -272,10 +266,10 @@ smarttdR r = modFailMsg ("smarttdR failed: " ++) $ go where
       Type _ -> fail "smarttdR Type"
       Coercion _ -> fail "smarttdR Coercion"
 
-eliminatesType :: TH.Name -> TranslateH CoreExpr ()
+eliminatesType :: String -> TransformH CoreExpr ()
 eliminatesType ty = do
     dynFlags <- constT getDynFlags
-    prefixFailMsg ("eliminatesType: " ++ show ty ++ " ") $ do
+    prefixFailMsg ("eliminatesType: " ++ ty ++ " ") $ do
         appT successT (inTypeT ty) const
         <+ castT (inTypeT ty) successT (flip const)
         <+ caseT (inTypeT ty) successT successT (const successT) (\() _ _ _ -> ())
@@ -296,14 +290,14 @@ eliminatesType ty = do
       {-^ not really an error, I just don't know what to do with it -}
     Type _ -> fail "types cannot eliminate types"
     Coercion _ -> fail "coercions cannot eliminate types"
-  where go :: CoreExpr -> TranslateH Core ()
+  where go :: CoreExpr -> TransformH Core ()
         go e = do let t = exprKindOrType e
                   dynFlags <- constT getDynFlags
                   guardMsg (ty `inType` t) $ " not found in " ++ showPpr dynFlags t ++ "."
                   return ()
 -}
 
-inTypeT :: TH.Name -> TranslateH CoreExpr ()
+inTypeT :: String -> TransformH CoreExpr ()
 inTypeT ty = do
     dynFlags <- constT getDynFlags
     contextfreeT $ \ e -> do
@@ -314,29 +308,29 @@ inTypeT ty = do
 force :: RewriteH CoreExpr
 force = forcePrims []
 
-forcePrims :: [TH.Name] -> RewriteH CoreExpr
+forcePrims :: [String] -> RewriteH CoreExpr
 forcePrims prims = forceDeep False prims
 
-forceDeep :: Bool -> [TH.Name] -> RewriteH CoreExpr
+forceDeep :: Bool -> [String] -> RewriteH CoreExpr
 forceDeep deep prims =
        inlineR
     <+ betaReduceR <+ letFloatAppR <+ castFloatAppR
     <+ (appT (isPrimCall' prims) successT const >> appAllR idR (forceDeep True prims))
     <+ appAllR (forceDeep deep prims) idR
     <+ whenM (return deep) (appAllR idR (forceDeep deep prims))
-    <+ caseAllR (forceDeep deep prims) idR idR (const idR) <+ caseReduceR <+ letFloatCaseR
+    <+ caseAllR (forceDeep deep prims) idR idR (const idR) <+ caseReduceR False <+ letFloatCaseR
     <+ letAllR idR (forceDeep deep prims)
     <+ castAllR (forceDeep deep prims) idR
     <+ fail "forceDeep failed"
 
 -- TODO: there is probably a built-in for doing this wrapping already but I don't know what it is
-isPrimCall' :: [TH.Name] -> TranslateH CoreExpr ()
+isPrimCall' :: [String] -> TransformH CoreExpr ()
 isPrimCall' prims = do
   e <- idR
   if isPrimCall prims e then return () else fail "not a prim call"
 
-isPrimCall :: [TH.Name] -> CoreExpr -> Bool
-isPrimCall prims (Var v) = any (flip cmpTHName2Var v) prims
+isPrimCall :: [String] -> CoreExpr -> Bool
+isPrimCall prims (Var v) = any (flip cmpString2Var v) prims
 isPrimCall prims (App f _) = isPrimCall prims f
 isPrimCall _ _ = False
 
