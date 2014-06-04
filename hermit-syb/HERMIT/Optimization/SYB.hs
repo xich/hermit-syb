@@ -7,6 +7,7 @@ import Control.Arrow
 import Control.Monad
 import Data.Generics (gshow)
 import Data.List (intercalate, intersect, partition)
+import Data.Maybe (maybe)
 import GHC.Fingerprint (Fingerprint(..), fingerprintFingerprints)
 
 import qualified Data.Map as Map
@@ -44,6 +45,7 @@ optSimp = anytdR (repeatR (promoteExprR (   ruleR "append"
                                          <+ letSubstType "BOX"
                                          <+ evalFingerprintFingerprints
                                          <+ eqWordElim
+                                         <+ tagToEnumElim
                                          <+ letSubstTrivialR
                                          <+ caseReduceR False)
                                             >>> traceR "SIMPLIFYING"))
@@ -95,6 +97,8 @@ exts = map ((.+ Experiment) . (.+ TODO)) [
  , external "eval-eqWord" (promoteExprR eqWordElim :: RewriteH Core)
         ["eqWord# e1 e2 ==> True if e1 and e2 are literals and equal"
         ,"eqWord# e1 e2 ==> False if e1 and e2 are literals and not equal"] .+ Shallow .+ Eval
+ , external "eval-tagToEnum" (promoteExprR tagToEnumElim :: RewriteH Core)
+        ["tagToEnum# Bool 0 ==> True"] .+ Shallow .+ Eval
  , external "eval-fingerprintFingerprints" (promoteExprR evalFingerprintFingerprints :: RewriteH Core)
         ["replaces 'fingerprintFingerprints [f1,f2,...]' with its value."
         ,"Requires that f1,f2,... are literals."] .+ Shallow .+ Eval
@@ -189,6 +193,20 @@ eqWordElim = do
 #else
     dflags <- constT getDynFlags
     return $ mkIntLitInt dflags $ if l1 == l2 then 1 else 0
+#endif
+
+#if __GLASGOW_HASKELL__ >= 708
+tagToEnumElim :: RewriteH CoreExpr
+tagToEnumElim = do
+  (Var v, [Type ty, Lit (MachInt i)]) <- callNameT "tagToEnum#"
+  case splitTyConApp_maybe ty of
+    Just (tycon, tc_args) | isEnumerationTyCon tycon -> do
+      let tag = fromInteger i
+          correct_tag dc = (dataConTag dc - fIRST_TAG) == tag
+      (dc:rest) <- return $ filter correct_tag (maybe [] id $ tyConDataCons_maybe tycon)
+      --ASSERT(null rest) return ()
+      return $ mkTyApps (Var (dataConWorkId dc)) tc_args
+    _ -> fail "tagToEnum# on non-enumeration type"
 #endif
 
 varInfo2 :: String -> TransformH Core String
