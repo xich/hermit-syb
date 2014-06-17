@@ -74,7 +74,7 @@ optMemo = smarttdR $ promoteExprR $ (>>) (   eliminatesType "Data"
                                           <+ eliminatesType "Qr"
                                           <+ eliminatesType "Fingerprint")
                                          (   bracketR "MEMOIZING" memoize
-                                          <+ (forcePrims ["fingerprintFingerprints", "eqWord#"] >>> traceR "FORCING"))
+                                          <+ (forcePrims ["fingerprintFingerprints", "eqWord#", "tagToEnum#"] >>> traceR "FORCING"))
 
 optSYB :: RewriteH Core
 optSYB = onetdR (promoteExprR (bracketR "!!!!! USED MEMOIZED BINDING !!!!!" stashFoldAnyR)) <+ optSimp <+ optFloat <+ optMemo
