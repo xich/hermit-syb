@@ -4,7 +4,7 @@ import Auxiliary.Tree (bigTree, sumTree)
 import Auxiliary.Logic (biggerLogic, evalLogic, Logic)
 import Auxiliary.Auxiliary (test, apply)
 import Auxiliary.SYB
-import SYB.Update.Update
+import SYBSpec.Update.Update
 
 import Data.Generics
 

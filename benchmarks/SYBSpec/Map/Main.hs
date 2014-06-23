@@ -6,7 +6,7 @@ import Auxiliary.SYB
 
 import Data.Generics
 
-import HERMIT.Optimization.SYB.Prelude
+import InlineGmap.Prelude
 
 mainTree :: IO ()
 mainTree = test (putStr (show (sumTree (apply 1000 (incTree (+1)) smallerTree))))

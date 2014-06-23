@@ -7,7 +7,7 @@ import Auxiliary.Logic
 import Auxiliary.SYB
 import Control.Monad.State
 
-import HERMIT.Optimization.SYB.Prelude
+import InlineGmap.Prelude
 
 mainTree :: IO ()
 mainTree = test (putStr (show (sumTree (evalState (applyM 3 renumberInt bigTree) 0))))

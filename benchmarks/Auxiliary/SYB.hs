@@ -3,6 +3,7 @@
 {-# LANGUAGE Rank2Types            #-}
 {-# LANGUAGE FlexibleInstances     #-}
 
+{-# OPTIONS_GHC -fexpose-all-unfoldings #-}
 module Auxiliary.SYB where
 
 import Auxiliary.Tree (Tree(..))
