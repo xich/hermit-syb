@@ -9,8 +9,9 @@ import System.FilePath ((</>))
 --------------------------------------------------------------------------------
 
 data Library = Hand          -- Handwritten code
-             | SYB           -- syb-0.1
-             | SYBSpec       -- syb-0.1
+             | SYB           -- Plain SYB
+             | SYBHermit     -- SYB with Hermit optimisation
+             | SYBSpec       -- SYB with GHC optimisation
                 deriving (Eq, Ord, Show)
 
 data TestName = Eq
@@ -46,10 +47,10 @@ htest l t d f = Test l t d hermitFlags
           modPrefix = "-fplugin-opt=HERMIT.Optimization.SYB:" ++ show l ++ "." ++ show t ++ ".Main:"
 
 
-stest :: Library -> TestName -> Datatype -> Test
-stest l t d = Test l t d flags
+stest :: Library -> TestName -> Datatype -> String -> Test
+stest l t d m = Test l t d flags
   where flags = unwords ["-fplugin=InlineGmap"
-                        ,"-fplugin-opt=InlineGmap:$MODULE:\"*6 *6 *6 *6\""
+                        ,"-fplugin-opt=InlineGmap:" ++ m ++ ":\"+6 +6 +6 +6\""
                         ,"-fexpose-all-unfoldings"
                         ]
 
@@ -103,28 +104,29 @@ sybTests = [ test SYB Eq     Tree
            ]
 
 hermitSybTests =
-    [ htest SYB Map         Tree "incTree"
---    , htest SYB Update      Tree ""
-    , htest SYB Update      Logic "updateString"
-    , htest SYB RmWeights   WTree "mainWTree"
-    , htest SYB SelectInt   WTree "mainWTree"
-    , htest SYB RenumberInt Tree  "mainTree"
-    , htest SYB RenumberInt Logic "mainLogic"
+    [ htest SYBHermit Map         Tree "incTree"
+--    , htest SYBHermit Update      Tree ""
+    , htest SYBHermit Update      Logic "updateString"
+    , htest SYBHermit RmWeights   WTree "mainWTree"
+    , htest SYBHermit SelectInt   WTree "mainWTree"
+    , htest SYBHermit RenumberInt Tree  "mainTree"
+    , htest SYBHermit RenumberInt Logic "mainLogic"
     ]
 
 sybSpecTests =
-    [ stest SYBSpec Map         Tree
-    , stest SYBSpec Update      Logic
-    , stest SYBSpec RmWeights   WTree
-    , stest SYBSpec SelectInt   WTree
-    , stest SYBSpec RenumberInt Tree
-    , stest SYBSpec RenumberInt Logic
+    [ stest SYBSpec Map         Tree  "SYBSpec.Map.Main"
+    , stest SYBSpec Update      Logic "SYBSpec.RmWeights.Update"
+    , stest SYBSpec RmWeights   WTree "SYBSpec.RmWeights.RmWeights"
+    , stest SYBSpec SelectInt   WTree "SYBSpec.RmWeights.SelectInt"
+    , stest SYBSpec RenumberInt Tree  "SYBSpec.RenumberInt.RenumberInt"
+    , stest SYBSpec RenumberInt Logic "SYBSpec.RenumberInt.RenumberInt"
     ]
 
 
-allTests = handTests ++ sybTests ++ hermitSybTests ++ sybSpecTests
+allTests = handTests ++ sybTests ++ sybSpecTests ++ hermitSybTests
 
 tests = [ t | t <- allTests
-        , lib t `elem` [Hand]
-        , testName t `elem` [RenumberInt, Map, Update, RmWeights, SelectInt]
+        , lib t `elem` [Hand,SYB,SYBSpec]
+        -- , testName t `elem` [Map, RenumberInt, Update, RmWeights, SelectInt]
+        , testName t `elem` [Map]
         ]
