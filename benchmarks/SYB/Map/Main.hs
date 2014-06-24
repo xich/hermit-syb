@@ -6,8 +6,6 @@ import Auxiliary.SYB
 
 import Data.Generics
 
-import HERMIT.Optimization.SYB.Prelude
-
 mainTree :: IO ()
 mainTree = test (putStr (show (sumTree (apply 100 (incTree (+1)) smallerTree))))
 

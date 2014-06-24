@@ -4,6 +4,8 @@ import Auxiliary.Auxiliary (test, apply)
 import SYB.SelectInt.SelectInt
 import TreeDatatype
 
+import HERMIT.Optimization.SYB.Prelude
+
 mainWTree :: IO ()
 {-
 mainWTree = do

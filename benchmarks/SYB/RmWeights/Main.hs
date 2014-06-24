@@ -4,8 +4,6 @@ import Auxiliary.Auxiliary (test, apply)
 import SYB.RmWeights.RmWeights
 import TreeDatatype
 
-import HERMIT.Optimization.SYB.Prelude
-
 mainWTree :: IO ()
 {-
 mainWTree = do
