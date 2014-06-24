@@ -26,11 +26,12 @@ plugin :: Plugin
 plugin = hermitPlugin $ \ opts -> do
     let (opts', targets) = partition (`elem` ["interactive", "interactive-only"]) opts
     phase 0 $ do
-        unless ("interactive-only" `elem` opts') $ do
-            forM_ targets $ \ t -> do
-                liftIO $ putStrLn $ "optimizing: " ++ t
-                at (promoteT $ rhsOfT $ cmpString2Var t) $ do
-                    run $ repeatR optSYB >>> tryR (innermostR $ promoteExprR letrecSubstTrivialR) >>> tryR simplifyR
+        if "interactive-only" `elem` opts'
+        then interactive exts []
+        else do forM_ targets $ \ t -> do
+                    liftIO $ putStrLn $ "optimizing: " ++ t
+                    at (promoteT $ rhsOfT $ cmpString2Var t) $ do
+                        run $ repeatR optSYB >>> tryR (innermostR $ promoteExprR letrecSubstTrivialR) >>> tryR simplifyR
 
     -- pass either interactive or interactive-only flags to dump into a shell at the end
     unless (null opts') $ after Simplify $ interactive exts []
@@ -371,7 +372,7 @@ memoize = prefixFailMsg "memoize failed: " $ do
 memoFloatApp :: RewriteH CoreExpr
 memoFloatApp = prefixFailMsg "Let floating from App function failed: " $
   do flags <- constT getDynFlags
-     appT letVarsT idR $ \x y -> mapM (lookupDef . showPpr flags) x
+     appT letVarsT idR $ \x y -> mapM (lookupDefByVar flags) x
      vs <- appT letVarsT (arr $ varSetElems . freeVarsExpr) intersect
      let letAction = if null vs then idR else alphaLetR
      appT letAction idR $ \ (Let bnds e) x -> Let bnds $ App e x
@@ -379,7 +380,7 @@ memoFloatApp = prefixFailMsg "Let floating from App function failed: " $
 memoFloatArg :: RewriteH CoreExpr
 memoFloatArg = prefixFailMsg "Let floating from App argument failed: " $
   do flags <- constT getDynFlags
-     appT idR letVarsT $ \x y -> mapM (lookupDef . showPpr flags) y
+     appT idR letVarsT $ \x y -> mapM (lookupDefByVar flags) y
      vs <- appT (arr $ varSetElems . freeVarsExpr) letVarsT intersect
      let letAction = if null vs then idR else alphaLetR
      appT idR letAction $ \ f (Let bnds e) -> Let bnds $ App f e
@@ -388,8 +389,8 @@ memoFloatMemoLet :: RewriteH CoreExpr
 memoFloatMemoLet = prefixFailMsg "Let floating from Let failed: " $ do
   (Let (Rec binds1) (Let (Rec binds2) body)) <- idR
   flags <- constT getDynFlags
-  constT $ mapM (lookupDef . showPpr flags . fst) binds1
-  constT $ mapM (lookupDef . showPpr flags . fst) binds2
+  constT $ mapM (lookupDefByVar flags . fst) binds1
+  constT $ mapM (lookupDefByVar flags . fst) binds2
   return (Let (Rec (binds1 ++ binds2)) body)
 
 memoFloatLet :: RewriteH CoreExpr
@@ -397,7 +398,7 @@ memoFloatLet = prefixFailMsg "Let floating from Let failed: " $ do
   (Let binds1 (Let (Rec binds2) body)) <- idR
   vars <- letVarsT
   flags <- constT getDynFlags
-  constT $ mapM (lookupDef . showPpr flags . fst) binds2
+  constT $ mapM (lookupDefByVar flags . fst) binds2
   let (unfloatable, floatable) = filterBinds' vars binds2
   if null floatable
   then fail "cannot float"
@@ -410,9 +411,9 @@ memoFloatMemoBind :: RewriteH CoreExpr
 memoFloatMemoBind = prefixFailMsg "Let floating from Let failed: " $ do
   (Let (Rec binds1) body) <- idR
   flags <- constT getDynFlags
-  constT $ mapM (lookupDef . showPpr flags . fst) binds1
+  constT $ mapM (lookupDefByVar flags . fst) binds1
   let f (x, e) = (do (Let (Rec binds2) body) <- return e
-                     constT $ mapM (lookupDef . showPpr flags . fst) binds2
+                     constT $ mapM (lookupDefByVar flags . fst) binds2
                      return ((x, body) : binds2)) <+
                  (return [(x, e)])
   binds1' <- mapM f binds1
@@ -424,9 +425,9 @@ memoFloatRecBind :: RewriteH CoreExpr
 memoFloatRecBind = prefixFailMsg "Let floating from Let failed: " $ do
   (Let (Rec binds1) body) <- idR
   flags <- constT getDynFlags
-  constT $ mapM (lookupDef . showPpr flags . fst) binds1
+  constT $ mapM (lookupDefByVar flags . fst) binds1
   let f (x, e) = (do (Let (Rec binds2) body) <- return e
-                     constT $ mapM (lookupDef . showPpr flags . fst) binds2
+                     constT $ mapM (lookupDefByVar flags . fst) binds2
                      let (unfl, fl) = filterBinds' (map fst binds1) binds2
                      return (fl, (x, if null unfl then body else Let (Rec unfl) body))) <+
                  (return ([], (x, e)))
@@ -440,7 +441,7 @@ memoFloatBind :: RewriteH CoreExpr
 memoFloatBind = prefixFailMsg "Let floating from Let failed: " $ do
   (Let (NonRec lhs (Let (Rec binds) rhs)) body) <- idR
   flags <- constT getDynFlags
-  constT $ mapM (lookupDef . showPpr flags . fst) binds
+  constT $ mapM (lookupDefByVar flags . fst) binds
   let (unfloatable, floatable) = filterBinds' [lhs] binds
   if null floatable
   then fail "cannot float"
@@ -462,13 +463,15 @@ filterBinds vars unfloatables floatables =
         newFloatables
   where isUnfloatable (vars', _) = not (null (intersect vars vars'))
 
+lookupDefByVar :: DynFlags -> Var -> HermitM CoreDef
+lookupDefByVar flags = lookupDef . showPpr flags
 
 memoFloatLam :: RewriteH CoreExpr
 memoFloatLam = prefixFailMsg "Let floating from Lam failed: " $
               withPatFailMsg (wrongExprForm "Lam v1 (Let (NonRec v2 e1) e2)") $
   do Lam v1 (Let (Rec binds) e2) <- idR
      flags <- constT getDynFlags
-     constT $ mapM (lookupDef . showPpr flags . fst) binds
+     constT $ mapM (lookupDefByVar flags . fst) binds
      if v1 `elem` (map fst binds)
      then alphaLamR Nothing >>> memoFloatLam
      else let (unfloatable, floatable) = filterBinds' [v1] binds
@@ -483,7 +486,7 @@ memoFloatLam = prefixFailMsg "Let floating from Lam failed: " $
 memoFloatCase :: RewriteH CoreExpr
 memoFloatCase = prefixFailMsg "Let floating from Case failed: " $
   do flags <- constT getDynFlags
-     caseT letVarsT idR idR (const idR) $ \x _ _ _ -> mapM (lookupDef . showPpr flags) x
+     caseT letVarsT idR idR (const idR) $ \x _ _ _ -> mapM (lookupDefByVar flags) x
      captures <- caseT letVarsT idR idR
                        (\ _ -> arr $ varSetElems . freeVarsAlt)
                        (\ vs wild _ fs -> vs `intersect` concatMap (wild:) fs)
@@ -495,7 +498,7 @@ memoFloatCase = prefixFailMsg "Let floating from Case failed: " $
 memoFloatCast :: RewriteH CoreExpr
 memoFloatCast = prefixFailMsg "Let floating from Cast failed: " $
   do flags <- constT getDynFlags
-     castT letVarsT idR $ \x co -> mapM (lookupDef . showPpr flags) x
+     castT letVarsT idR $ \x co -> mapM (lookupDefByVar flags) x
      castT idR idR (\ (Let bnds e) co -> Let bnds (Cast e co))
 
 -- | @case (let bnds in e) of wild alts ==> let bnds in (case e of wild alts)@
@@ -510,7 +513,7 @@ memoFloatAlt = prefixFailMsg "Let floating from Case failed: " $ do
   let getLet pre post alt = do
         (con, args, Let (Rec binds) body) <- return alt
         -- TODO: intersect "args" with "free args of binds".  alpha?
-        constT $ mapM (lookupDef . showPpr flags . fst) binds
+        constT $ mapM (lookupDefByVar flags . fst) binds
         let (unfloatable, floatable) = filterBinds' args binds
         if null floatable
         then fail "no floatable let binds"
