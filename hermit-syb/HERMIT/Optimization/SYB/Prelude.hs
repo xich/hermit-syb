@@ -8,6 +8,7 @@ module HERMIT.Optimization.SYB.Prelude
     , module GHC.Fingerprint.Type
     , module GHC.Prim
     , module GHC.Word
+    , append
     ) where
 
 import Data.Function (fix)
@@ -26,6 +27,7 @@ import GHC.Word
 {-# RULES "append"           (++)    = append #-}
 #endif
 
+{-# INLINABLE append #-}
 append :: [a] -> [a] -> [a]
 append []     xs = xs
 append (y:ys) xs = y : append ys xs
