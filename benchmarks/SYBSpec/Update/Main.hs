@@ -8,7 +8,7 @@ import SYBSpec.Update.Update
 
 import Data.Generics
 
-import HERMIT.Optimization.SYB.Prelude
+import InlineGmap.Prelude
 
 mainTree :: IO ()
 mainTree = test (putStr (show (sumTree (apply 20 updateInt bigTree))))
