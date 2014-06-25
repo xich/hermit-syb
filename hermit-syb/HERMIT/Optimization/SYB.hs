@@ -31,7 +31,10 @@ plugin = hermitPlugin $ \ opts -> do
         else do forM_ targets $ \ t -> do
                     liftIO $ putStrLn $ "optimizing: " ++ t
                     at (promoteT $ rhsOfT $ cmpString2Var t) $ do
-                        run $ repeatR optSYB >>> tryR (innermostR $ promoteExprR letrecSubstTrivialR) >>> tryR simplifyR
+                        run $     repeatR optSYB
+                              >>> tryR (innermostR $ promoteExprR letrecSubstTrivialR)
+                              >>> tryR simplifyR
+                        display
 
     -- pass either interactive or interactive-only flags to dump into a shell at the end
     unless (null opts') $ after Simplify $ interactive exts []
