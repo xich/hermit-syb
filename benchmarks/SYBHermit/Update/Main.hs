@@ -1,10 +1,10 @@
-module SYB.Update.Main where
+module SYBHermit.Update.Main where
 
 import Auxiliary.Tree (bigTree, sumTree)
 import Auxiliary.Logic (biggerLogic, evalLogic, Logic)
 import Auxiliary.Auxiliary (test, apply)
 import Auxiliary.SYB
-import SYB.Update.Update
+import SYBHermit.Update.Update
 
 import Data.Generics
 

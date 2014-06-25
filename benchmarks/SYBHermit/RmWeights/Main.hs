@@ -1,7 +1,7 @@
-module SYB.RmWeights.Main where
+module SYBHermit.RmWeights.Main where
 
 import Auxiliary.Auxiliary (test, apply)
-import SYB.RmWeights.RmWeights
+import SYBHermit.RmWeights.RmWeights
 import TreeDatatype
 
 import HERMIT.Optimization.SYB.Prelude

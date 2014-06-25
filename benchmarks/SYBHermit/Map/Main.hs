@@ -1,4 +1,4 @@
-module SYB.Map.Main where
+module SYBHermit.Map.Main where
 
 import Auxiliary.Tree (smallerTree, sumTree, Tree)
 import Auxiliary.Auxiliary (test, apply)

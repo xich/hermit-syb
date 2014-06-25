@@ -1,5 +1,5 @@
 {-# LANGUAGE RankNTypes #-}
-module SYB.SelectInt.SelectInt where
+module SYBHermit.SelectInt.SelectInt where
 
 import Data.Generics
 import TreeDatatype

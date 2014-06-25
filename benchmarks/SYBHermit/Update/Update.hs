@@ -1,4 +1,4 @@
-module SYB.Update.Update where
+module SYBHermit.Update.Update where
 
 import Auxiliary.Tree (Tree(..))
 import Auxiliary.Logic (Logic(..))
