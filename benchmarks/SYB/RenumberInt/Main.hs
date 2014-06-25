@@ -5,7 +5,7 @@ import SYB.RenumberInt.RenumberInt
 import Auxiliary.Tree
 import Auxiliary.Logic
 import Auxiliary.SYB
-import Control.Monad.State
+import Control.Monad.State.Strict
 
 mainTree :: IO ()
 mainTree = test (putStr (show (sumTree (evalState (applyM 3 renumberInt bigTree) 0))))
