@@ -145,6 +145,8 @@ exts = map ((.+ Experiment) . (.+ TODO)) [
              [ "case (let v = ev in e) of ... ==> let v = ev in case e of ..." ]  .+ Commute .+ Shallow .+ Eval
  , external "memo-float-alt" (promoteExprR memoFloatAlt :: RewriteH Core)
              [ "case (let v = ev in e) of ... ==> let v = ev in case e of ..." ]  .+ Commute .+ Shallow .+ Eval
+ , external "memo-elim" (promoteExprR memoElimR :: RewriteH Core)
+             [ "eliminate a non-self-recursive memoization binding" ]
  ]
 
 letSubstTrivialR :: RewriteH CoreExpr
@@ -371,6 +373,28 @@ memoize = prefixFailMsg "memoize failed: " $ do
     return (Let (Rec [(v', e')]) (Var v'))
 
 -------------------------------------------------------------------------------------------
+
+-- | Attempt to eliminate any non-self-recursive memoized bindings.
+memoElimR :: RewriteH CoreExpr
+memoElimR = prefixFailMsg "Memoized binding elimination failed: " $ do
+    Let bnds body <- idR
+    dflags <- getDynFlags
+    case bnds of
+        NonRec v rhs -> do
+            setFailMsg "not a memoization binding." $ constT $ lookupDefByVar dflags v
+            letNonRecSubstR
+        Rec defs -> do
+            guardMsg (notNull defs) "empty recursive defs."
+            let findInlineTarget [] = fail "no non-recursive memoization bindings in group."
+                findInlineTarget ((v,rhs):rest) = do
+                    f1 <- testM $ lookupDefByVar dflags v
+                    let f2 = not (v `elemVarSet` (freeVarsExpr rhs))
+                    if f1 && f2 then return (v,rhs) else findInlineTarget rest
+            (v,rhs) <- constT $ findInlineTarget $ reverse defs
+            let substAllRhss [] = []
+                substAllRhss ((b,e):rest) | b == v    = substAllRhss rest
+                                          | otherwise = (b,substCoreExpr v rhs e) : substAllRhss rest
+            return $ Let (Rec $ substAllRhss defs) (substCoreExpr v rhs body)
 
 memoFloatApp :: RewriteH CoreExpr
 memoFloatApp = prefixFailMsg "Let floating from App function failed: " $
