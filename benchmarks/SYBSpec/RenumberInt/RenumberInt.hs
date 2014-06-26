@@ -1,7 +1,7 @@
 module SYBSpec.RenumberInt.RenumberInt where
 
 import Data.Generics
-import Control.Monad.State
+import Control.Monad.State.Strict
 
 getUnique :: Int -> State Int Int
 getUnique _ = do

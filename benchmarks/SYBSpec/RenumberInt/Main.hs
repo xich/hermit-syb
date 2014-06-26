@@ -5,7 +5,7 @@ import SYBSpec.RenumberInt.RenumberInt
 import Auxiliary.Tree
 import Auxiliary.Logic
 import Auxiliary.SYB
-import Control.Monad.State
+import Control.Monad.State.Strict
 
 import InlineGmap.Prelude
 
