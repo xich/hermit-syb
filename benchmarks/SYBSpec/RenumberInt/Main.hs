@@ -1,7 +1,7 @@
 module SYBSpec.RenumberInt.Main where
 
 import Auxiliary.Auxiliary (test, apply, applyM)
-import SYB.RenumberInt.RenumberInt
+import SYBSpec.RenumberInt.RenumberInt
 import Auxiliary.Tree
 import Auxiliary.Logic
 import Auxiliary.SYB

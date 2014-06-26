@@ -1,7 +1,7 @@
 module SYBSpec.RmWeights.Main where
 
 import Auxiliary.Auxiliary (test, apply)
-import SYB.RmWeights.RmWeights
+import SYBSpec.RmWeights.RmWeights
 import TreeDatatype
 
 import InlineGmap.Prelude

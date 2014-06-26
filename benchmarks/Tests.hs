@@ -115,11 +115,11 @@ hermitSybTests =
 
 sybSpecTests =
     [ stest SYBSpec Map         Tree  "SYBSpec.Map.Main"
-    , stest SYBSpec Update      Logic "SYBSpec.RmWeights.Update"
-    , stest SYBSpec RmWeights   WTree "SYBSpec.RmWeights.RmWeights"
-    , stest SYBSpec SelectInt   WTree "SYBSpec.RmWeights.SelectInt"
-    , stest SYBSpec RenumberInt Tree  "SYBSpec.RenumberInt.RenumberInt"
-    , stest SYBSpec RenumberInt Logic "SYBSpec.RenumberInt.RenumberInt"
+    , stest SYBSpec Update      Logic "SYBSpec.Update.Main"
+    , stest SYBSpec RmWeights   WTree "SYBSpec.RmWeights.Main"
+    , stest SYBSpec SelectInt   WTree "SYBSpec.SelectInt.Main"
+    , stest SYBSpec RenumberInt Tree  "SYBSpec.RenumberInt.Main"
+    , stest SYBSpec RenumberInt Logic "SYBSpec.RenumberInt.Main"
     ]
 
 
