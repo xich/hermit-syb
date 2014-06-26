@@ -1,11 +1,11 @@
-module SYB.RenumberInt.Main where
+module SYBHermit.RenumberInt.Main where
 
 import Auxiliary.Auxiliary (test, apply, applyM)
-import SYB.RenumberInt.RenumberInt
+import SYBHermit.RenumberInt.RenumberInt
 import Auxiliary.Tree
 import Auxiliary.Logic
 import Auxiliary.SYB
-import Control.Monad.State
+import Control.Monad.State.Strict
 
 import HERMIT.Optimization.SYB.Prelude
 

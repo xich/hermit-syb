@@ -1,7 +1,7 @@
-module SYB.SelectInt.Main where
+module SYBHermit.SelectInt.Main where
 
 import Auxiliary.Auxiliary (test, apply)
-import SYB.SelectInt.SelectInt
+import SYBHermit.SelectInt.SelectInt
 import TreeDatatype
 
 import HERMIT.Optimization.SYB.Prelude

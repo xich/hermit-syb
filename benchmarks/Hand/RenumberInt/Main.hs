@@ -1,7 +1,7 @@
 module Hand.RenumberInt.Main where
 
 import Auxiliary.Auxiliary (test, applyM)
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Hand.RenumberInt.RenumberInt
 import Auxiliary.Tree
 import Auxiliary.Logic

@@ -2,7 +2,7 @@ module Hand.RenumberInt.RenumberInt where
 
 import Auxiliary.Tree
 import Auxiliary.Logic
-import Control.Monad.State
+import Control.Monad.State.Strict
 
 {-# INLINE getUnique #-}
 getUnique :: State Int Int
@@ -19,10 +19,16 @@ renumberInt (Bin _v l r)       = do
     r' <- renumberInt r
     return $ Bin v' l' r'
 
+-- In order to be fair with SYB, which is not selective, we descend into Strings.
+renumberIntString :: String -> State Int String
+renumberIntString [] = return []
+renumberIntString (c:cs) = renumberIntString cs >>= return . (c:)
+
 renumberIntLogic :: Logic -> State Int Logic
 renumberIntLogic (Var s _i) = do
     i' <- getUnique
-    return $ Var s i'
+    s' <- renumberIntString s
+    return $ Var s' i'
 renumberIntLogic T = return T
 renumberIntLogic F = return F
 renumberIntLogic (Not l) = do

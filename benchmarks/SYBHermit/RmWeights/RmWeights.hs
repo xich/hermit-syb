@@ -1,4 +1,4 @@
-module SYB.RmWeights.RmWeights where
+module SYBHermit.RmWeights.RmWeights where
 
 import Data.Generics
 import TreeDatatype(WTree(WithWeight))
