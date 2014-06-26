@@ -59,6 +59,7 @@ data Datatype = Tree    -- Labelled binary trees
               | Nat     -- Peano naturals
               | List    -- Haskell lists
               | WTree   -- Weighted Tree from GPBench
+              | HsModule -- haskell-src
                 deriving (Eq, Ord, Show)
 
 
@@ -84,7 +85,9 @@ handTests = [ test Hand Eq     Tree
             , test Hand RmWeights WTree
             , test Hand SelectInt WTree
             , test Hand RenumberInt Tree
-            , test Hand RenumberInt Logic]
+            , test Hand RenumberInt Logic
+            , test Hand Update HsModule
+            ]
 
 sybTests = [ test SYB Eq     Tree
            , test SYB Map    Tree
@@ -101,16 +104,18 @@ sybTests = [ test SYB Eq     Tree
            , test SYB SelectInt WTree
            , test SYB RenumberInt Tree
            , test SYB RenumberInt Logic
+           , test SYB Update HsModule
            ]
 
 hermitSybTests =
     [ htest SYBHermit Map         Tree "incTree"
 --    , htest SYBHermit Update      Tree ""
-    , htest SYBHermit Update      Logic "updateString"
+    , htest SYBHermit Update      Logic "updateStringLogic"
     , htest SYBHermit RmWeights   WTree "mainWTree"
     , htest SYBHermit SelectInt   WTree "mainWTree"
     , htest SYBHermit RenumberInt Tree  "mainTree"
     , htest SYBHermit RenumberInt Logic "mainLogic"
+    , htest SYBHermit Update      HsModule "updateStringHsModule"
     ]
 
 sybSpecTests =
@@ -127,6 +132,6 @@ allTests = handTests ++ sybTests ++ sybSpecTests ++ hermitSybTests
 
 tests = [ t | t <- allTests
         , lib t `elem` [Hand,SYB,SYBHermit]
-        , testName t `elem` [Map, RenumberInt, Update, RmWeights, SelectInt]
+        , testName t `elem` [Update] -- Map, RenumberInt, Update, RmWeights, SelectInt]
         -- , testName t `elem` [Map]
         ]
