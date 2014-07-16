@@ -8,6 +8,7 @@ import Control.Monad
 import Data.Generics (gshow)
 import Data.List (intercalate, intersect, partition)
 import Data.Maybe (maybe)
+import Data.String (fromString)
 import GHC.Fingerprint (Fingerprint(..), fingerprintFingerprints)
 
 import qualified Data.Map as Map
@@ -19,6 +20,7 @@ import HERMIT.External
 import HERMIT.GHC hiding (display)
 import HERMIT.Kure
 import HERMIT.Monad
+import HERMIT.Name
 import HERMIT.Plugin.Builder
 import HERMIT.Plugin
 
@@ -40,8 +42,8 @@ plugin = hermitPlugin $ \ opts -> do
     unless (null opts') $ after Simplify $ interactive exts []
 
 optSimp :: RewriteH Core
-optSimp = anytdR (repeatR (promoteExprR (   ruleR "append"
-                                         <+ ruleR "[]++"
+optSimp = anytdR (repeatR (promoteExprR (   ruleR (fromString "append")
+                                         <+ ruleR (fromString "[]++")
                                          <+ castElimReflR
                                          <+ castElimSymPlusR
                                          <+ letElimR
@@ -221,7 +223,7 @@ varInfo2 nm = translate $ \ c e ->
          []  -> fail "cannot find name."
          [i] -> do dynFlags <- getDynFlags
                    return ("Type or Kind: " ++ (showPpr dynFlags . exprKindOrType) (Var i))
-         is  -> fail $ "multiple names match: " ++ intercalate ", " (map var2String is)
+         is  -> fail $ "multiple names match: " ++ intercalate ", " (map unqualifiedName is)
 
 varInfo :: RewriteH CoreExpr
 varInfo = do
@@ -239,7 +241,7 @@ evalFingerprintFingerprints = do
   ctor <- findIdT "Fingerprint"
   --trace ("ctor: "++showPpr dynFlags ctor) $ return ()
   w64 <- findIdT "GHC.Word.W64#"
-  guardMsg (v == v') (var2String v ++ " does not match " ++ "fingerprintFingerprints")
+  guardMsg (v == v') (unqualifiedName v ++ " does not match " ++ "fingerprintFingerprints")
   let getFingerprints (App (Var nil') _) {- - | nil' == nil -} = return []
       getFingerprints (Var cons' `App` _ `App` f `App` fs) {- - | cons' == cons-} = liftM2 (:) f' (getFingerprints fs) where
          f' = case f of (Var ctor' `App` (Lit (MachWord w1)) `App` (Lit (MachWord w2)))
@@ -257,7 +259,7 @@ isMemoizedLet = do
   case e of
     ExprCore (Let (Rec [(v, _)]) _) -> do
       flags <- constT $ getDynFlags
-      constT $ lookupDef (showPpr flags v)
+      constT $ lookupDef $ fromString $ showPpr flags v
       return ()
     _ -> fail "not a memoized let"
 
@@ -366,7 +368,7 @@ memoize = prefixFailMsg "memoize failed: " $ do
     e' <- force
     v' <- constT $ newIdH ("memo_"++getOccString v) (exprType e)
     flags <- constT $ getDynFlags
-    constT $ saveDef (showPpr flags v') (Def v' e)
+    constT $ saveDef (fromString (showPpr flags v')) (Def v' e)
     --cleanupUnfold
     --e' <- idR
     --e' <- translate $ \env _ -> apply (extractR inline) env (Var v)
@@ -491,7 +493,7 @@ filterBinds vars unfloatables floatables =
   where isUnfloatable (vars', _) = not (null (intersect vars vars'))
 
 lookupDefByVar :: DynFlags -> Var -> HermitM CoreDef
-lookupDefByVar flags = lookupDef . showPpr flags
+lookupDefByVar flags = lookupDef . fromString . showPpr flags
 
 memoFloatLam :: RewriteH CoreExpr
 memoFloatLam = prefixFailMsg "Let floating from Lam failed: " $
@@ -504,7 +506,7 @@ memoFloatLam = prefixFailMsg "Let floating from Lam failed: " $
      else let (unfloatable, floatable) = filterBinds' [v1] binds
        in if null floatable
           then fail "no floatable let binds"
---     mapM (\(v2, e1) -> guardMsg (v1 `notElem` coreExprFreeVars e1) $ var2String v1 ++ " occurs in the definition of " ++ var2String v2 ++ ".") binds
+--     mapM (\(v2, e1) -> guardMsg (v1 `notElem` coreExprFreeVars e1) $ unqualifiedName v1 ++ " occurs in the definition of " ++ unqualifiedName v2 ++ ".") binds
           else return (Let (Rec floatable) (Lam v1
                         (if null unfloatable
                         then e2
