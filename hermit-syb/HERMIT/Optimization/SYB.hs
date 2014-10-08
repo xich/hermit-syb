@@ -1,4 +1,5 @@
 {-# LANGUAGE DoAndIfThenElse, CPP #-} -- why do we need this?
+{-# LANGUAGE OverloadedStrings #-}
 module HERMIT.Optimization.SYB where
 
 import qualified Outputable (showSDocDebug)
@@ -27,7 +28,7 @@ import HERMIT.Plugin
 plugin :: Plugin
 plugin = hermitPlugin $ \ opts -> do
     let (opts', targets) = partition (`elem` ["interactive", "interactive-only"]) opts
-    phase 0 $ do
+    pass 0 $ do
         if "interactive-only" `elem` opts'
         then interactive exts []
         else do forM_ targets $ \ t -> do
