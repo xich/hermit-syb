@@ -1,0 +1,13 @@
+== libraries/ghc-prim: running git diff
+diff --git a/GHC/Classes.hs b/GHC/Classes.hs
+index 2b8a580..f52ee23 100644
+--- a/GHC/Classes.hs
++++ b/GHC/Classes.hs
+@@ -84,6 +84,7 @@ deriving instance (Eq a, Eq b, Eq c, Eq d, Eq e, Eq f, Eq g,
+ 
+ instance (Eq a) => Eq [a] where
+     {-# SPECIALISE instance Eq [Char] #-}
++    {-# INLINABLE (==) #-}
+     []     == []     = True
+     (x:xs) == (y:ys) = x == y && xs == ys
+     _xs    == _ys    = False

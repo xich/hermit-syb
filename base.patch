@@ -1,0 +1,145 @@
+diff --git a/Data/Data.hs b/Data/Data.hs
+index 24f72d4..55dd82c 100644
+--- a/Data/Data.hs
++++ b/Data/Data.hs
+@@ -2,6 +2,7 @@
+ {-# LANGUAGE RankNTypes, ScopedTypeVariables, PolyKinds #-}
+ {-# LANGUAGE StandaloneDeriving, DeriveDataTypeable, TypeOperators,
+              GADTs #-}
++{-# OPTIONS_GHC -fexpose-all-unfoldings #-}
+ 
+ -----------------------------------------------------------------------------
+ -- |
+@@ -1078,6 +1079,7 @@ listDataType :: DataType
+ listDataType = mkDataType "Prelude.[]" [nilConstr,consConstr]
+ 
+ instance Data a => Data [a] where
++  {-# INLINEABLE gfoldl #-}
+   gfoldl _ z []     = z []
+   gfoldl f z (x:xs) = z (:) `f` x `f` xs
+   toConstr []    = nilConstr
+@@ -1093,10 +1095,13 @@ instance Data a => Data [a] where
+ -- The gmaps are given as an illustration.
+ -- This shows that the gmaps for lists are different from list maps.
+ --
++  {-# INLINEABLE gmapT #-}
+   gmapT  _   []     = []
+   gmapT  f   (x:xs) = (f x:f xs)
++  {-# INLINEABLE gmapQ #-}
+   gmapQ  _   []     = []
+   gmapQ  f   (x:xs) = [f x,f xs]
++  {-# INLINEABLE gmapM #-}
+   gmapM  _   []     = return []
+   gmapM  f   (x:xs) = f x >>= \x' -> f xs >>= \xs' -> return (x':xs')
+ 
+@@ -1112,6 +1117,7 @@ maybeDataType :: DataType
+ maybeDataType = mkDataType "Prelude.Maybe" [nothingConstr,justConstr]
+ 
+ instance Data a => Data (Maybe a) where
++  {-# INLINEABLE gfoldl #-}
+   gfoldl _ z Nothing  = z Nothing
+   gfoldl f z (Just x) = z Just `f` x
+   toConstr Nothing  = nothingConstr
+@@ -1137,6 +1143,7 @@ orderingDataType :: DataType
+ orderingDataType = mkDataType "Prelude.Ordering" [ltConstr,eqConstr,gtConstr]
+ 
+ instance Data Ordering where
++  {-# INLINEABLE gfoldl #-}
+   gfoldl _ z LT  = z LT
+   gfoldl _ z EQ  = z EQ
+   gfoldl _ z GT  = z GT
+@@ -1163,6 +1170,7 @@ eitherDataType :: DataType
+ eitherDataType = mkDataType "Prelude.Either" [leftConstr,rightConstr]
+ 
+ instance (Data a, Data b) => Data (Either a b) where
++  {-# INLINEABLE gfoldl #-}
+   gfoldl f z (Left a)   = z Left  `f` a
+   gfoldl f z (Right a)  = z Right `f` a
+   toConstr (Left _)  = leftConstr
+@@ -1199,6 +1207,7 @@ tuple2DataType :: DataType
+ tuple2DataType = mkDataType "Prelude.(,)" [tuple2Constr]
+ 
+ instance (Data a, Data b) => Data (a,b) where
++  {-# INLINEABLE gfoldl #-}
+   gfoldl f z (a,b) = z (,) `f` a `f` b
+   toConstr (_,_) = tuple2Constr
+   gunfold k z c | constrIndex c == 1 = k (k (z (,)))
+@@ -1216,6 +1225,7 @@ tuple3DataType :: DataType
+ tuple3DataType = mkDataType "Prelude.(,,)" [tuple3Constr]
+ 
+ instance (Data a, Data b, Data c) => Data (a,b,c) where
++  {-# INLINEABLE gfoldl #-}
+   gfoldl f z (a,b,c) = z (,,) `f` a `f` b `f` c
+   toConstr (_,_,_) = tuple3Constr
+   gunfold k z c | constrIndex c == 1 = k (k (k (z (,,))))
+@@ -1233,6 +1243,7 @@ tuple4DataType = mkDataType "Prelude.(,,,)" [tuple4Constr]
+ 
+ instance (Data a, Data b, Data c, Data d)
+          => Data (a,b,c,d) where
++  {-# INLINEABLE gfoldl #-}
+   gfoldl f z (a,b,c,d) = z (,,,) `f` a `f` b `f` c `f` d
+   toConstr (_,_,_,_) = tuple4Constr
+   gunfold k z c = case constrIndex c of
+@@ -1251,6 +1262,7 @@ tuple5DataType = mkDataType "Prelude.(,,,,)" [tuple5Constr]
+ 
+ instance (Data a, Data b, Data c, Data d, Data e)
+          => Data (a,b,c,d,e) where
++  {-# INLINEABLE gfoldl #-}
+   gfoldl f z (a,b,c,d,e) = z (,,,,) `f` a `f` b `f` c `f` d `f` e
+   toConstr (_,_,_,_,_) = tuple5Constr
+   gunfold k z c = case constrIndex c of
+@@ -1269,6 +1281,7 @@ tuple6DataType = mkDataType "Prelude.(,,,,,)" [tuple6Constr]
+ 
+ instance (Data a, Data b, Data c, Data d, Data e, Data f)
+          => Data (a,b,c,d,e,f) where
++  {-# INLINEABLE gfoldl #-}
+   gfoldl f z (a,b,c,d,e,f') = z (,,,,,) `f` a `f` b `f` c `f` d `f` e `f` f'
+   toConstr (_,_,_,_,_,_) = tuple6Constr
+   gunfold k z c = case constrIndex c of
+@@ -1287,6 +1300,7 @@ tuple7DataType = mkDataType "Prelude.(,,,,,,)" [tuple7Constr]
+ 
+ instance (Data a, Data b, Data c, Data d, Data e, Data f, Data g)
+          => Data (a,b,c,d,e,f,g) where
++  {-# INLINEABLE gfoldl #-}
+   gfoldl f z (a,b,c,d,e,f',g) =
+     z (,,,,,,) `f` a `f` b `f` c `f` d `f` e `f` f' `f` g
+   toConstr  (_,_,_,_,_,_,_) = tuple7Constr
+@@ -1317,6 +1331,7 @@ instance (Data a, Typeable a) => Data (ForeignPtr a) where
+ -- inefficiency. We omit reflection services for the sake of data abstraction.
+ instance (Typeable a, Data a, Data b, Ix a) => Data (Array a b)
+  where
++  {-# INLINEABLE gfoldl #-}
+   gfoldl f z a = z (listArray (bounds a)) `f` (elems a)
+   toConstr _   = error "Data.Data.toConstr(Array)"
+   gunfold _ _  = error "Data.Data.gunfold(Array)"
+diff --git a/Data/Typeable/Internal.hs b/Data/Typeable/Internal.hs
+index 1b3ce75..8456a34 100644
+--- a/Data/Typeable/Internal.hs
++++ b/Data/Typeable/Internal.hs
+@@ -124,9 +124,11 @@ mkTyConApp tc@(TyCon tc_k _ _ _) []
+                        -- end up here, and it helps generate smaller
+                        -- code for derived Typeable.
+ mkTyConApp tc@(TyCon tc_k _ _ _) args
+-  = TypeRep (fingerprintFingerprints (tc_k : arg_ks)) tc args
+-  where
+-    arg_ks = [k | TypeRep k _ _ <- args]
++  = TypeRep (fingerprintFingerprints (tc_k : arg_ks args)) tc args
++
++{-# INLINEABLE arg_ks #-}
++arg_ks [] = []
++arg_ks (TypeRep k _ _ : args) = k : arg_ks args
+ 
+ -- | A special case of 'mkTyConApp', which applies the function 
+ -- type constructor to a pair of types.
+diff --git a/GHC/Fingerprint.hs b/GHC/Fingerprint.hs
+index a7568e6..cf5a9c2 100644
+--- a/GHC/Fingerprint.hs
++++ b/GHC/Fingerprint.hs
+@@ -43,6 +43,7 @@ import GHC.Fingerprint.Type
+ fingerprint0 :: Fingerprint
+ fingerprint0 = Fingerprint 0 0
+ 
++{-# NOINLINE fingerprintFingerprints #-}
+ fingerprintFingerprints :: [Fingerprint] -> Fingerprint
+ fingerprintFingerprints fs = unsafeDupablePerformIO $
+   withArrayLen fs $ \len p -> do

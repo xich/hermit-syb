@@ -84,7 +84,7 @@ optMemo = smarttdR $ promoteExprR $ (>>) (   eliminatesType "Data"
                                           <+ (forcePrims ["fingerprintFingerprints", "eqWord#", "tagToEnum#"] >>> traceR "FORCING"))
 
 optSYB :: RewriteH Core
-optSYB = onetdR (promoteExprR (bracketR "!!!!! USED MEMOIZED BINDING !!!!!" stashFoldAnyR)) <+ optSimp <+ optFloat <+ optMemo
+optSYB = onetdR (promoteExprR (bracketR "!!!!! USED MEMOIZED BINDING !!!!!" foldAnyRememberedR)) <+ optSimp <+ optFloat <+ optMemo
 
 exts ::  [External]
 exts = map ((.+ Experiment) . (.+ TODO)) [
@@ -260,8 +260,7 @@ isMemoizedLet = do
   case e of
     ExprCore (Let (Rec [(v, _)]) _) -> do
       flags <- constT $ getDynFlags
-      constT $ lookupDef $ fromString $ showPpr flags v
-      return ()
+      void $ constT $ lookupDefByVar flags v
     _ -> fail "not a memoized let"
 
 inlineType :: String -> RewriteH CoreExpr
@@ -369,7 +368,7 @@ memoize = prefixFailMsg "memoize failed: " $ do
     e' <- force
     v' <- constT $ newIdH ("memo_"++getOccString v) (exprType e)
     flags <- constT $ getDynFlags
-    constT $ saveDef (fromString (showPpr flags v')) (Def v' e)
+    extractR (rememberR (fromString (showPpr flags v'))) <<< return (Def v' e)
     --cleanupUnfold
     --e' <- idR
     --e' <- translate $ \env _ -> apply (extractR inline) env (Var v)
@@ -493,8 +492,11 @@ filterBinds vars unfloatables floatables =
         newFloatables
   where isUnfloatable (vars', _) = not (null (intersect vars vars'))
 
-lookupDefByVar :: DynFlags -> Var -> HermitM CoreDef
-lookupDefByVar flags = lookupDef . fromString . showPpr flags
+lookupDefByVar :: DynFlags -> Var -> HermitM Lemma
+lookupDefByVar flags v = do
+    let nm = fromString $ showPpr flags v
+    ls <- getLemmas
+    maybe (fail $ "No lemma named: " ++ show nm) return $ Map.lookup (prefixRemembered nm) ls
 
 memoFloatLam :: RewriteH CoreExpr
 memoFloatLam = prefixFailMsg "Let floating from Lam failed: " $

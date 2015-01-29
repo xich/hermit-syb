@@ -1,0 +1,10 @@
+diff --git a/haskell-src.cabal b/haskell-src.cabal
+index c6b045c..9ef168b 100644
+--- a/haskell-src.cabal
++++ b/haskell-src.cabal
+@@ -36,4 +36,4 @@ library
+     build-depends:      base < 3
+   extensions:   CPP
+   nhc98-options:        -K11M
+-  ghc-options:          -Wall -O2
++  ghc-options:          -Wall -O2 -fexpose-all-unfoldings
