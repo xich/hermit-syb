@@ -17,6 +17,7 @@ import qualified Data.Map as Map
 import HERMIT.Context
 import HERMIT.Core
 import HERMIT.Dictionary
+import HERMIT.Equality
 import HERMIT.External
 import HERMIT.GHC hiding (display)
 import HERMIT.Kure
