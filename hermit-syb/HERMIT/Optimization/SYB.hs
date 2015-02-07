@@ -39,6 +39,7 @@ plugin = hermitPlugin $ \ opts -> do
                     at (promoteT $ rhsOfT $ cmpString2Var t) $ do
                         run $     repeatR optSYB
                               >>> tryR (innermostR $ promoteExprR letrecSubstTrivialR)
+                              >>> tryR (anytdR $ promoteExprR $ ruleR "unappend") -- clean up
                               >>> tryR simplifyR
                         display
 
@@ -47,7 +48,8 @@ plugin = hermitPlugin $ \ opts -> do
 
 optSimp :: RewriteH Core
 optSimp = anytdR (repeatR (promoteExprR (   ruleR (fromString "append")
-                                         <+ ruleR (fromString "[]++")
+                                         <+ ruleR (fromString "append-left")
+                                         <+ ruleR (fromString "append-right")
                                          <+ castElimReflR
                                          <+ castElimSymPlusR
                                          <+ letElimR

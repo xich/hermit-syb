@@ -18,14 +18,10 @@ import GHC.Fingerprint.Type
 import GHC.Prim -- eqWord#
 import GHC.Word
 
--- After 7.6, GHC supports rules that never fire automatically.
-#if __GLASGOW_HASKELL__ > 706
-{-# RULES "[]++"   [~] forall x. [] ++ x = x      #-}
-{-# RULES "append" [~]           (++)    = append #-}
-#else
-{-# RULES "[]++"   forall x. [] ++ x = x #-}
-{-# RULES "append"           (++)    = append #-}
-#endif
+{-# RULES "append"       [~]           (++)        = append #-}
+{-# RULES "append-left"  [~] forall x. append [] x = x      #-}
+{-# RULES "append-right" [~] forall x. append x [] = x      #-}
+{-# RULES "unappend"     [~]           append      = (++)   #-}
 
 {-# INLINABLE append #-}
 append :: [a] -> [a] -> [a]
