@@ -4,6 +4,11 @@ module SYB.SelectInt.SelectInt where
 import Data.Generics
 import TreeDatatype
 
+selectInt :: Data a => a -> [Int]
+selectInt = everything (++) (mkQ [] f) where
+  f :: Int -> [Int]
+  f x = [x]
+
 selectInt_acc :: Data a => a -> [Int]
 -- selectInt_acc x = everything (.) (mkQ id (:)) x []
 selectInt_acc x = everythingAcc (mkQ id (:)) x []

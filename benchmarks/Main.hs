@@ -15,7 +15,7 @@ import System.IO ( hPutStrLn, hPutStr, Handle, IOMode(..), stdout, hFlush
                  , hIsEOF, hGetChar, hClose, openFile, hFileSize)
 import System.Exit (ExitCode(..))
 import System.Info (os, arch, compilerVersion)
-import Control.Monad (when)
+import Control.Monad (when, unless)
 import Data.List (intercalate, isInfixOf, sort)
 
 import Tests
@@ -153,6 +153,7 @@ main = do
             binsize   = gotArg args B
             help      = gotArg args H
             debug     = gotArg args D
+            timeOnly  = gotArg args TO
             n, threads, threadsTo :: Int
             n         = if profiling then 1 else (getRequiredArg args N)
             threads   = getRequiredArg args T
@@ -192,9 +193,10 @@ main = do
           usageError args "Cannot profile and compute binary sizes."
 
         -- Compilation
-        putStrLn "Compiling..." >> hFlush stdout
-        sequence_ [ putStrLn $ show i ++ ": " ++ (cmd t) | (i,t) <- zip [1..] tests ]
-        sequenceProgress_ [ system (cmd t) | t <- tests ]
+        unless timeOnly $ do
+          putStrLn "Compiling..." >> hFlush stdout
+          sequence_ [ putStrLn $ show i ++ ": " ++ (cmd t) | (i,t) <- zip [1..] tests ]
+          sequenceProgress_ [ system (cmd t) | t <- tests ]
 
         -- Remove old outputs
         putStrLn "Removing old outputs..." >> hFlush stdout
@@ -270,7 +272,7 @@ main = do
 --------------------------------------------------------------------------------
 -- Command-line arguments
 --------------------------------------------------------------------------------
-data MyArgs = N | O | F | P | B | C | H | T | TT | D | R
+data MyArgs = N | O | F | P | B | C | H | T | TT | D | R | TO
         deriving (Eq, Ord, Show)
 
 myArgs :: [Arg MyArgs]
@@ -340,6 +342,12 @@ myArgs = [
                 argName = Just "debug",
                 argData = Nothing,
                 argDesc = "Print extra debug information"
+              },
+          Arg { argIndex = TO,
+                argAbbr = Just 'z',
+                argName = Just "time-only",
+                argData = Nothing,
+                argDesc = "Skip compilation"
               }
          ]
 

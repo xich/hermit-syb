@@ -11,6 +11,8 @@ import Data.Generics
 import Language.Haskell.Parser
 import Language.Haskell.Syntax
 
+import HERMIT.Optimization.SYB.Prelude
+
 mainTree :: IO ()
 mainTree = test (putStr (show (sumTree (apply 20 updateInt bigTree))))
 

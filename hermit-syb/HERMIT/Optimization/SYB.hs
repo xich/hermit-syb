@@ -25,6 +25,8 @@ import HERMIT.Name
 import HERMIT.Plugin.Builder
 import HERMIT.Plugin
 
+import CoreUnfold (mkSimpleUnfolding)
+
 plugin :: Plugin
 plugin = hermitPlugin $ \ opts -> do
     let (opts', targets) = partition (`elem` ["interactive", "interactive-only"]) opts
@@ -84,11 +86,38 @@ optMemo = smarttdR $ promoteExprR $ (>>) (   eliminatesType "Data"
                                           <+ (forcePrims ["fingerprintFingerprints", "eqWord#", "tagToEnum#"] >>> traceR "FORCING"))
 
 optSYB :: RewriteH Core
-optSYB = onetdR (promoteExprR (bracketR "!!!!! USED MEMOIZED BINDING !!!!!" foldAnyRememberedR)) <+ optSimp <+ optFloat <+ optMemo
+optSYB = (do c <- compileRememberedT
+             onetdR (promoteExprR (bracketR "!!!!! USED MEMOIZED BINDING !!!!!" $ runFoldR c)))
+         <+ optSimp <+ optFloat <+ optMemo
+
+unLoopBreaker :: RewriteH CoreDef
+unLoopBreaker = do
+    Def i e <- idR
+    guardMsg (isId i) "not an Id"
+    dflags <- dynFlagsT
+    return $ Def (setIdUnfolding (setIdOccInfo i NoOccInfo) (mkSimpleUnfolding dflags e)) e
+
+loopBreaker :: RewriteH CoreDef
+loopBreaker = do
+    Def i e <- idR
+    guardMsg (isId i) "not an Id"
+    dflags <- dynFlagsT
+    return $ Def (setIdOccInfo i strongLoopBreaker) e
+
+defInfo :: TransformH CoreDef String
+defInfo = do
+    Def i e <- idR
+    return (varToCoreExpr i) >>> (extractT infoT :: TransformH CoreExpr String)
 
 exts ::  [External]
 exts = map ((.+ Experiment) . (.+ TODO)) [
-   external "let-subst-trivial" (promoteExprR letSubstTrivialR :: RewriteH Core)
+   external "un-loopbreaker" (promoteDefR unLoopBreaker :: RewriteH Core)
+       [ "Unset loopbreaker status on a binding and provide unfolding info." ]
+ , external "loopbreaker" (promoteDefR loopBreaker :: RewriteH Core)
+       [ "Set loopbreaker status on a binding." ]
+ , external "def-info" (promoteDefT defInfo :: TransformH Core String)
+       [ "See 'info' for binder in definition. " ]
+ , external "let-subst-trivial" (promoteExprR letSubstTrivialR :: RewriteH Core)
        [ "Let substitution (but only if e1 is a variable or literal)"
        , "let x = e1 in e2 ==> e2[e1/x]"
        , "x must not be free in e1." ] .+ Deep
@@ -121,6 +150,7 @@ exts = map ((.+ Experiment) . (.+ TODO)) [
  , external "memoize" (promoteExprR memoize :: RewriteH Core)
         ["TODO"] .+ Eval .+ Introduce
  , external "opt-syb"   optSYB   ["TODO"] .+ Eval .+ Introduce
+ , external "opt-syb-lint"   (optSYB >>> (promoteExprT lintExprT >> idR))   ["TODO"] .+ Eval .+ Introduce
  , external "opt-simp"  optSimp  ["TODO"] .+ Eval .+ Introduce
  , external "opt-float" optFloat ["TODO"] .+ Eval .+ Introduce
  , external "opt-memo"  optMemo  ["TODO"] .+ Eval .+ Introduce
@@ -367,12 +397,13 @@ memoize = prefixFailMsg "memoize failed: " $ do
     --e' <- extractR (pathR (replicate (length args) 0) (promoteR {-force-} inline) :: RewriteH Core)
     e' <- force
     v' <- constT $ newIdH ("memo_"++getOccString v) (exprType e)
-    flags <- constT $ getDynFlags
-    extractR (rememberR (fromString (showPpr flags v'))) <<< return (Def v' e)
+    dflags <- dynFlagsT
+    let v'' = setIdUnfolding v' (mkSimpleUnfolding dflags e)
+    extractR (rememberR (fromString (showPpr dflags v''))) <<< return (Def v'' e)
     --cleanupUnfold
     --e' <- idR
     --e' <- translate $ \env _ -> apply (extractR inline) env (Var v)
-    return (Let (Rec [(v', e')]) (Var v'))
+    return (Let (Rec [(v'', e')]) (Var v''))
 
 -------------------------------------------------------------------------------------------
 
