@@ -1,4 +1,4 @@
-GHC_PATH=$(HOME)/ghc/sybghc/inplace/bin/ghc
+GHC_PATH=/home/afarmer/scp/ghc-7.8/inplace/bin/ghc
 
 all : Main.hs
 	ghc --make -O1 -fforce-recomp Main
