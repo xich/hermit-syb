@@ -56,13 +56,13 @@ cabal install kure
 # syb
 git clone http://michaeldadams.org/projects/hermit/syb.git
 cd syb
-cabal install
+cabal install -p
 cd ..
 # haskell-src
 git clone git://github.com/haskell-pkg-janitors/haskell-src.git
 cd haskell-src
 patch -p1 < path/to/hermit-syb/haskell-src.patch
-cabal install
+cabal install -p
 cd ..
 # hermit
 git clone git@github.com:ku-fpg/hermit.git
