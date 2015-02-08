@@ -4,19 +4,19 @@ module Main where
 
 
 -- ParseArgs library
-import System.Console.ParseArgs
 
-import System.CPUTime (cpuTimePrecision)
-import Data.List (groupBy, sortBy, intersperse, transpose)
-import System.FilePath ((</>), takeExtension)
-import System.Directory (getDirectoryContents, removeFile)
+import Control.Monad (when, unless)
+import Data.List (groupBy, intercalate, intersperse, isInfixOf, transpose, sort, sortBy)
+import Data.Maybe (fromMaybe)
 import System.Cmd (system)
+import System.Console.ParseArgs
+import System.CPUTime (cpuTimePrecision)
+import System.Directory (getDirectoryContents, removeFile)
+import System.Exit (ExitCode(..))
+import System.FilePath ((</>), takeExtension)
+import System.Info (os, arch, compilerVersion)
 import System.IO ( hPutStrLn, hPutStr, Handle, IOMode(..), stdout, hFlush
                  , hIsEOF, hGetChar, hClose, openFile, hFileSize)
-import System.Exit (ExitCode(..))
-import System.Info (os, arch, compilerVersion)
-import Control.Monad (when, unless)
-import Data.List (intercalate, isInfixOf, sort)
 
 import Tests
 import Util
@@ -95,7 +95,8 @@ writeCSVFile fn l = do
             where (h_tm,h_std,t_nm,t_ty) = head [ (tm,std,testName t,datatype t) | (_,t,(tm,_),(std,_)) <- tsts, lib t == Hand ]
         csvfile = unlines $ (intercalate ", " $ "Benchmark" : [ nm ++ ", " ++ nm ++ "_stddev"
                                                               | tsts <- take 1 lcsv, (_,t,_,_) <- tsts
-                                                              , let nm = case lib t of
+                                                              , let nm = maybe id (\m p -> p++"."++m) (mainIs t)
+                                                                         $ case lib t of
                                                                             SYB -> if "HERMIT" `isInfixOf` ghcFlags t
                                                                                    then "SYBOPT"
                                                                                    else "SYB"
@@ -139,7 +140,7 @@ handle1Group h g  = do
 
 
 name :: Test -> String
-name t = show (testName t) ++ "/" ++ show (datatype t) ++ " " ++ ghcFlags t
+name t = show (testName t) ++ "/" ++ show (datatype t) ++ maybe "" ("."++) (mainIs t)
 
 --------------------------------------------------------------------------------
 -- Main
@@ -176,7 +177,7 @@ main = do
             hash = show . hashString . show
             mainis t = "-main-is " ++ show (lib t) ++ "."
                          ++ show (testName t)
-                         ++ ".Main.main" ++ show (datatype t)
+                         ++ ".Main." ++ fromMaybe ("main" ++ show (datatype t)) (mainIs t)
                          ++ " -o " ++ newpath t ++ " "
             path t = show (lib t) </> show (testName t) </> "Main"
             newpath t = path t ++ show (lib t) ++ show (testName t) ++ show (datatype t) ++ hash t

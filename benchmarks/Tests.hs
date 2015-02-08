@@ -30,14 +30,15 @@ data TestName = Eq
 data Test = Test { lib :: Library,
                    testName :: TestName,
                    datatype :: Datatype,
-                   ghcFlags :: String
+                   ghcFlags :: String,
+                   mainIs   :: Maybe String
                  } deriving (Eq, Ord, Show)
 
-test :: Library -> TestName -> Datatype -> Test
-test l t d = Test l t d ""
+test :: Library -> TestName -> Datatype -> Maybe String -> Test
+test l t d m = Test l t d "" m
 
-htest :: Library -> TestName -> Datatype -> String -> Test
-htest l t d f = Test l t d hermitFlags
+htest :: Library -> TestName -> Datatype -> Maybe String -> String -> Test
+htest l t d m f = Test l t d hermitFlags m
     where hermitFlags = unwords ["-dcore-lint"             -- HERMIT sanity check
                                 ,"-fsimple-list-literals"  -- HERMIT
                                 ,"-fexpose-all-unfoldings" -- optimization diverges without
@@ -47,10 +48,10 @@ htest l t d f = Test l t d hermitFlags
           modPrefix = "-fplugin-opt=HERMIT.Optimization.SYB:" ++ show l ++ "." ++ show t ++ ".Main:"
 
 
-stest :: Library -> TestName -> Datatype -> String -> Test
-stest l t d m = Test l t d flags
+stest :: Library -> TestName -> Datatype -> Maybe String -> String -> Test
+stest l t d m mod = Test l t d flags m
   where flags = unwords ["-fplugin=InlineGmap"
-                        ,"-fplugin-opt=InlineGmap:" ++ m ++ ":\"+6 +6 +6 +6\""
+                        ,"-fplugin-opt=InlineGmap:" ++ mod ++ ":\"+6 +6 +6 +6\""
                         ,"-fexpose-all-unfoldings"
                         ]
 
@@ -68,70 +69,76 @@ data Datatype = Tree    -- Labelled binary trees
 --------------------------------------------------------------------------------
 
 allTests, handTests, sybTests, hermitSybTests, sybSpecTests :: [Test]
-handTests = [ test Hand Eq     Tree
-            , test Hand Map    Tree
-            , test Hand Read   Tree
-            , test Hand Show   Tree
---            , test Hand Update Tree
-            , test Hand Enum   Tree
-            , test Hand Enum   Nat
-            , test Hand Decode Tree
-            , test Hand Eq     Logic
-            , test Hand Read   Logic
-            , test Hand Show   Logic
-            , test Hand Update Logic
-            , test Hand Enum   Logic
-            , test Hand Decode Logic
-            , test Hand RmWeights WTree
-            , test Hand SelectInt WTree
-            , test Hand RenumberInt Tree
-            , test Hand RenumberInt Logic
-            , test Hand Update HsModule
+handTests = [ test Hand Eq     Tree Nothing
+            , test Hand Map    Tree Nothing
+            , test Hand Read   Tree Nothing
+            , test Hand Show   Tree Nothing
+--            , test Hand Update Tree Nothing
+            , test Hand Enum   Tree Nothing
+            , test Hand Enum   Nat Nothing
+            , test Hand Decode Tree Nothing
+            , test Hand Eq     Logic Nothing
+            , test Hand Read   Logic Nothing
+            , test Hand Show   Logic Nothing
+            , test Hand Update Logic Nothing
+            , test Hand Enum   Logic Nothing
+            , test Hand Decode Logic Nothing
+            , test Hand RmWeights WTree Nothing
+            , test Hand SelectInt WTree (Just "mainDumb")
+            , test Hand SelectInt WTree (Just "mainSmart")
+            , test Hand RenumberInt Tree Nothing
+            , test Hand RenumberInt Logic Nothing
+            , test Hand Update HsModule Nothing
             ]
 
-sybTests = [ test SYB Eq     Tree
-           , test SYB Map    Tree
-           , test SYB Read   Tree
-           , test SYB Show   Tree
---           , test SYB Update Tree
-           , test SYB Enum   Tree
-           , test SYB Eq     Logic
-           , test SYB Read   Logic
-           , test SYB Show   Logic
-           , test SYB Update Logic
-           , test SYB Enum   Logic
-           , test SYB RmWeights WTree
-           , test SYB SelectInt WTree
-           , test SYB RenumberInt Tree
-           , test SYB RenumberInt Logic
-           , test SYB Update HsModule
+sybTests = [ test SYB Eq     Tree Nothing
+           , test SYB Map    Tree Nothing
+           , test SYB Read   Tree Nothing
+           , test SYB Show   Tree Nothing
+--           , test SYB Update Tree Nothing
+           , test SYB Enum   Tree Nothing
+           , test SYB Eq     Logic Nothing
+           , test SYB Read   Logic Nothing
+           , test SYB Show   Logic Nothing
+           , test SYB Update Logic Nothing
+           , test SYB Enum   Logic Nothing
+           , test SYB RmWeights WTree Nothing
+           , test SYB SelectInt WTree (Just "mainEverythingWTree")
+           , test SYB SelectInt WTree (Just "mainEverythingRWTree")
+           , test SYB SelectInt WTree (Just "mainEverythingQlWTree")
+           , test SYB SelectInt WTree (Just "mainEverythingQrWTree")
+           , test SYB RenumberInt Tree Nothing
+           , test SYB RenumberInt Logic Nothing
+           , test SYB Update HsModule Nothing
            ]
 
 hermitSybTests =
-    [ htest SYBHermit Map         Tree "incTree"
---    , htest SYBHermit Update      Tree ""
-    , htest SYBHermit Update      Logic "updateStringLogic"
-    , htest SYBHermit RmWeights   WTree "mainWTree"
-    , htest SYBHermit SelectInt   WTree "mainWTree"
-    , htest SYBHermit RenumberInt Tree  "mainTree"
-    , htest SYBHermit RenumberInt Logic "mainLogic"
-    , htest SYBHermit Update      HsModule "updateStringHsModule"
+    [ htest SYBHermit Map         Tree Nothing "incTree"
+    , htest SYBHermit RenumberInt Tree  Nothing "mainTree"
+    , htest SYBHermit RenumberInt Logic Nothing "mainLogic"
+    , htest SYBHermit RmWeights   WTree Nothing "mainWTree"
+    , htest SYBHermit SelectInt   WTree (Just "mainEverythingWTree") "mainEverythingWTree"
+    , htest SYBHermit SelectInt   WTree (Just "mainEverythingRWTree") "mainEverythingRWTree"
+    , htest SYBHermit SelectInt   WTree (Just "mainEverythingQlWTree") "mainEverythingQlWTree"
+    , htest SYBHermit SelectInt   WTree (Just "mainEverythingQrWTree") "mainEverythingQrWTree"
+--    , htest SYBHermit Update      Tree Nothing "" -- see Map Tree
+    , htest SYBHermit Update      Logic Nothing "updateStringLogic"
+    , htest SYBHermit Update      HsModule Nothing "updateStringHsModule"
     ]
 
 sybSpecTests =
-    [ stest SYBSpec Map         Tree  "SYBSpec.Map.Main"
-    , stest SYBSpec Update      Logic "SYBSpec.Update.Main"
-    , stest SYBSpec RmWeights   WTree "SYBSpec.RmWeights.Main"
-    , stest SYBSpec SelectInt   WTree "SYBSpec.SelectInt.Main"
-    , stest SYBSpec RenumberInt Tree  "SYBSpec.RenumberInt.Main"
-    , stest SYBSpec RenumberInt Logic "SYBSpec.RenumberInt.Main"
+    [ stest SYBSpec Map         Tree  Nothing "SYBSpec.Map.Main"
+    , stest SYBSpec Update      Logic Nothing "SYBSpec.Update.Main"
+    , stest SYBSpec RmWeights   WTree Nothing "SYBSpec.RmWeights.Main"
+    , stest SYBSpec SelectInt   WTree Nothing "SYBSpec.SelectInt.Main"
+    , stest SYBSpec RenumberInt Tree  Nothing "SYBSpec.RenumberInt.Main"
+    , stest SYBSpec RenumberInt Logic Nothing "SYBSpec.RenumberInt.Main"
     ]
-
 
 allTests = handTests ++ sybTests ++ sybSpecTests ++ hermitSybTests
 
 tests = [ t | t <- allTests
         , lib t `elem` [Hand,SYB,SYBHermit]
-        , testName t `elem` [Map, RenumberInt, Update, RmWeights, SelectInt]
-        , (datatype t `elem` [HsModule])
+        , testName t `elem` [SelectInt] -- Map, RenumberInt, Update, RmWeights, SelectInt]
+        , not (datatype t `elem` [HsModule])
         ]
