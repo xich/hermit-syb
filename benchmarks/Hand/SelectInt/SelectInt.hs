@@ -2,10 +2,15 @@ module Hand.SelectInt.SelectInt where
 
 import TreeDatatype
 
-selectInt :: WTree Int Int -> [Int]
-selectInt (Leaf x) = [x]
-selectInt (Fork l r) = selectInt l ++ selectInt r
-selectInt (WithWeight t w) = w : selectInt t
+selectIntSmart :: WTree Int Int -> [Int]
+selectIntSmart (Leaf x) = [x]
+selectIntSmart (Fork l r) = selectIntSmart l ++ selectIntSmart r
+selectIntSmart (WithWeight t w) = w : selectIntSmart t
+
+selectIntDumb :: WTree Int Int -> [Int]
+selectIntDumb (Leaf x) = [x]
+selectIntDumb (Fork l r) = selectIntDumb l ++ selectIntDumb r
+selectIntDumb (WithWeight t w) = selectIntDumb t ++ [w]
 
 selectInt_acc :: WTree Int Int -> [Int]
 selectInt_acc = loop []

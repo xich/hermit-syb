@@ -4,10 +4,13 @@ import Auxiliary.Auxiliary (test, apply)
 import Hand.SelectInt.SelectInt
 import TreeDatatype
 
-mainWTree :: IO ()
+mainDumb :: IO ()
 {-
-mainWTree = do
+mainDumb = do
     mapM_ (\n -> let s = sizeWTree (mkFullWTree n)
                  in putStrLn $ show n ++ ": " ++ show s) [65,67..]
 -}
-mainWTree = test (putStr (show (sumWTree (apply 30 (\t -> sum (selectInt t) `seq` t) (mkFullWTree 53)))))
+mainDumb = test (putStr (show (sumWTree (apply 30 (\t -> sum (selectIntDumb t) `seq` t) (mkFullWTree 53)))))
+
+mainSmart :: IO ()
+mainSmart = test (putStr (show (sumWTree (apply 30 (\t -> sum (selectIntSmart t) `seq` t) (mkFullWTree 53)))))

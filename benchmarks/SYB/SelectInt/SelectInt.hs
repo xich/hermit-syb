@@ -4,10 +4,19 @@ module SYB.SelectInt.SelectInt where
 import Data.Generics
 import TreeDatatype
 
-selectInt :: Data a => a -> [Int]
-selectInt = everything (++) (mkQ [] f) where
+selectInt :: Data a => (forall r. (r -> r -> r) -> GenericQ r -> GenericQ r) -> a -> [Int]
+selectInt ething = ething (++) (mkQ [] f) where
   f :: Int -> [Int]
   f x = [x]
+
+everythingR :: (r -> r -> r) -> GenericQ r -> GenericQ r
+everythingR k f x = foldr k (f x) (gmapQ (everythingR k f) x)
+
+everythingQl :: (r -> r -> r) -> GenericQ r -> GenericQ r
+everythingQl k f x = gmapQl k (f x) (everythingQl k f) x
+
+everythingQr :: (r -> r -> r) -> GenericQ r -> GenericQ r
+everythingQr k f x = gmapQr k (f x) (everythingQr k f) x
 
 selectInt_acc :: Data a => a -> [Int]
 -- selectInt_acc x = everything (.) (mkQ id (:)) x []
