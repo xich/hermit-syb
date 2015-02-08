@@ -2,3 +2,5 @@
 *.o
 *.out
 *.compileout
+out/*
+hermit-syb/dist
