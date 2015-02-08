@@ -20,4 +20,4 @@ mainHsModule = do
     m <- case parseModule fc of
             ParseOk m -> return m
             _ -> fail "parseModule failed"
-    test $ putStr $ show $ flip seq () $ apply 100 (seqHsModule . updateHsModule) m
+    test $ putStr $ show $ flip seq () $ apply 100 (seqHsModule . updateHsModule (const 'y')) m
