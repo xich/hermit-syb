@@ -69,15 +69,13 @@ data Datatype = Tree    -- Labelled binary trees
 --------------------------------------------------------------------------------
 
 allTests, handTests, sybTests, hermitSybTests, sybSpecTests :: [Test]
-handTests = [ test Hand Eq     Tree Nothing
-            , test Hand Map    Tree Nothing
+handTests = [ test Hand Map    Tree Nothing
             , test Hand Read   Tree Nothing
             , test Hand Show   Tree Nothing
 --            , test Hand Update Tree Nothing
             , test Hand Enum   Tree Nothing
             , test Hand Enum   Nat Nothing
             , test Hand Decode Tree Nothing
-            , test Hand Eq     Logic Nothing
             , test Hand Read   Logic Nothing
             , test Hand Show   Logic Nothing
             , test Hand Update Logic Nothing
@@ -89,15 +87,14 @@ handTests = [ test Hand Eq     Tree Nothing
             , test Hand RenumberInt Tree Nothing
             , test Hand RenumberInt Logic Nothing
             , test Hand Update HsModule Nothing
+            , test Hand Eq WTree Nothing
             ]
 
-sybTests = [ test SYB Eq     Tree Nothing
-           , test SYB Map    Tree Nothing
+sybTests = [ test SYB Map    Tree Nothing
            , test SYB Read   Tree Nothing
            , test SYB Show   Tree Nothing
 --           , test SYB Update Tree Nothing
            , test SYB Enum   Tree Nothing
-           , test SYB Eq     Logic Nothing
            , test SYB Read   Logic Nothing
            , test SYB Show   Logic Nothing
            , test SYB Update Logic Nothing
@@ -110,6 +107,7 @@ sybTests = [ test SYB Eq     Tree Nothing
            , test SYB RenumberInt Tree Nothing
            , test SYB RenumberInt Logic Nothing
            , test SYB Update HsModule Nothing
+           , test SYB Eq WTree Nothing
            ]
 
 hermitSybTests =
@@ -124,6 +122,7 @@ hermitSybTests =
 --    , htest SYBHermit Update      Tree Nothing "" -- see Map Tree
     , htest SYBHermit Update      Logic Nothing "updateStringLogic"
     , htest SYBHermit Update      HsModule Nothing "updateStringHsModule"
+    , htest SYBHermit Eq          WTree Nothing "mainWTree"
     ]
 
 sybSpecTests =
@@ -139,6 +138,6 @@ allTests = handTests ++ sybTests ++ sybSpecTests ++ hermitSybTests
 
 tests = [ t | t <- allTests
         , lib t `elem` [Hand,SYB,SYBHermit]
-        , testName t `elem` [SelectInt] -- Map, RenumberInt, Update, RmWeights, SelectInt]
+        , testName t `elem` [Eq] -- Map, RenumberInt, Update, RmWeights, SelectInt]
         , not (datatype t `elem` [HsModule])
         ]
