@@ -21,7 +21,6 @@ import GHC.Word
 {-# RULES "append"       [~]           (++)        = append #-}
 {-# RULES "append-left"  [~] forall x. append [] x = x      #-}
 {-# RULES "append-right" [~] forall x. append x [] = x      #-}
-{-# RULES "unappend"     [~]           append      = (++)   #-}
 
 {-# INLINABLE append #-}
 append :: [a] -> [a] -> [a]

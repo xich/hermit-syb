@@ -39,7 +39,7 @@ plugin = hermitPlugin $ \ opts -> do
                     at (promoteT $ rhsOfT $ cmpString2Var t) $ do
                         run $     repeatR optSYB
                               >>> tryR (innermostR $ promoteExprR letrecSubstTrivialR)
-                              >>> tryR (anytdR $ promoteExprR $ ruleR "unappend") -- clean up
+                              >>> tryR (anytdR $ promoteExprR $ foldRuleR "append") -- clean up
                               >>> tryR simplifyR
                         display
 
@@ -47,9 +47,9 @@ plugin = hermitPlugin $ \ opts -> do
     unless (null opts') $ after Simplify $ interactive exts []
 
 optSimp :: RewriteH Core
-optSimp = anytdR (repeatR (promoteExprR (   ruleR (fromString "append")
-                                         <+ ruleR (fromString "append-left")
-                                         <+ ruleR (fromString "append-right")
+optSimp = anytdR (repeatR (promoteExprR (   unfoldRuleR (fromString "append")
+                                         <+ unfoldRuleR (fromString "append-left")
+                                         <+ unfoldRuleR (fromString "append-right")
                                          <+ castElimReflR
                                          <+ castElimSymPlusR
                                          <+ letElimR
@@ -402,7 +402,7 @@ memoize = prefixFailMsg "memoize failed: " $ do
     v' <- constT $ newIdH ("memo_"++getOccString v) (exprType e)
     dflags <- dynFlagsT
     let v'' = setIdUnfolding v' (mkSimpleUnfolding dflags e)
-    extractR (rememberR (fromString (showPpr dflags v''))) <<< return (Def v'' e)
+    extractT (rememberR (fromString (showPpr dflags v''))) <<< return (Def v'' e)
     --cleanupUnfold
     --e' <- idR
     --e' <- translate $ \env _ -> apply (extractR inline) env (Var v)
