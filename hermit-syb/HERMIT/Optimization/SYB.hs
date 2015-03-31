@@ -17,10 +17,11 @@ import qualified Data.Map as Map
 import HERMIT.Context
 import HERMIT.Core
 import HERMIT.Dictionary
-import HERMIT.Equality
 import HERMIT.External
 import HERMIT.GHC hiding (display)
-import HERMIT.Kure
+import HERMIT.Kernel
+import HERMIT.Kure hiding (apply)
+import HERMIT.Lemma
 import HERMIT.Monad
 import HERMIT.Name
 import HERMIT.Plugin.Builder
@@ -36,20 +37,22 @@ plugin = hermitPlugin $ \ opts -> do
         then interactive exts []
         else do forM_ targets $ \ t -> do
                     liftIO $ putStrLn $ "optimizing: " ++ t
-                    at (promoteT $ rhsOfT $ cmpString2Var t) $ do
-                        run $     repeatR optSYB
-                              >>> tryR (innermostR $ promoteExprR letrecSubstTrivialR)
-                              >>> tryR (anytdR $ promoteExprR $ foldRuleR "append") -- clean up
-                              >>> tryR simplifyR
-                        display
+                    apply (Always $ "-- optimizing " ++ t) $ do
+                        p <- rhsOfT (cmpString2Var t)
+                        promoteR $ localPathR p
+                                 $ repeatR optSYB
+                                        >>> tryR (innermostR $ promoteExprR letrecSubstTrivialR)
+                                        >>> tryR (anytdR $ promoteExprR $ foldRuleR UnsafeUsed "append") -- clean up
+                                        >>> tryR simplifyR
+                    display
 
     -- pass either interactive or interactive-only flags to dump into a shell at the end
     unless (null opts') $ after Simplify $ interactive exts []
 
-optSimp :: RewriteH Core
-optSimp = anytdR (repeatR (promoteExprR (   unfoldRuleR (fromString "append")
-                                         <+ unfoldRuleR (fromString "append-left")
-                                         <+ unfoldRuleR (fromString "append-right")
+optSimp :: RewriteH LCore
+optSimp = anytdR (repeatR (promoteExprR (   unfoldRuleR UnsafeUsed (fromString "append")
+                                         <+ unfoldRuleR UnsafeUsed (fromString "append-left")
+                                         <+ unfoldRuleR UnsafeUsed (fromString "append-right")
                                          <+ castElimReflR
                                          <+ castElimSymPlusR
                                          <+ letElimR
@@ -62,7 +65,7 @@ optSimp = anytdR (repeatR (promoteExprR (   unfoldRuleR (fromString "append")
                                          <+ caseReduceR False)
                                             >>> traceR "SIMPLIFYING"))
 
-optFloat :: RewriteH Core
+optFloat :: RewriteH LCore
 optFloat = anybuR (promoteExprR ((   memoFloatMemoLet
                                   <+ memoFloatMemoBind
                                   <+ memoFloatApp
@@ -76,7 +79,7 @@ optFloat = anybuR (promoteExprR ((   memoFloatMemoLet
                                   <+ memoFloatAlt)
                                      >>> traceR "FLOATING"))
 
-optMemo :: RewriteH Core
+optMemo :: RewriteH LCore
 optMemo = smarttdR $ promoteExprR $ (>>) (   eliminatesType "Data"
                                           <+ eliminatesType "Typeable"
                                           <+ eliminatesType "Typeable1"
@@ -88,7 +91,7 @@ optMemo = smarttdR $ promoteExprR $ (>>) (   eliminatesType "Data"
                                          (   bracketR "MEMOIZING" memoize
                                           <+ (forcePrims ["fingerprintFingerprints", "eqWord#", "tagToEnum#"] >>> traceR "FORCING"))
 
-optSYB :: RewriteH Core
+optSYB :: RewriteH LCore
 optSYB = (do c <- compileRememberedT
              onetdR (promoteExprR (bracketR "!!!!! USED MEMOIZED BINDING !!!!!" $ runFoldR c)))
          <+ optSimp <+ optFloat <+ optMemo
@@ -114,74 +117,74 @@ defInfo = do
 
 exts ::  [External]
 exts = map ((.+ Experiment) . (.+ TODO)) [
-   external "un-loopbreaker" (promoteDefR unLoopBreaker :: RewriteH Core)
+   external "un-loopbreaker" (promoteDefR unLoopBreaker :: RewriteH LCore)
        [ "Unset loopbreaker status on a binding and provide unfolding info." ]
- , external "loopbreaker" (promoteDefR loopBreaker :: RewriteH Core)
+ , external "loopbreaker" (promoteDefR loopBreaker :: RewriteH LCore)
        [ "Set loopbreaker status on a binding." ]
- , external "def-info" (promoteDefT defInfo :: TransformH Core String)
+ , external "def-info" (promoteDefT defInfo :: TransformH LCore String)
        [ "See 'info' for binder in definition. " ]
- , external "let-subst-trivial" (promoteExprR letSubstTrivialR :: RewriteH Core)
+ , external "let-subst-trivial" (promoteExprR letSubstTrivialR :: RewriteH LCore)
        [ "Let substitution (but only if e1 is a variable or literal)"
        , "let x = e1 in e2 ==> e2[e1/x]"
        , "x must not be free in e1." ] .+ Deep
- , external "letrec-subst-trivial" (promoteExprR letrecSubstTrivialR :: RewriteH Core)
+ , external "letrec-subst-trivial" (promoteExprR letrecSubstTrivialR :: RewriteH LCore)
        [ "Let substitution (but only if e1 is a variable or literal)"
        , "let x = e1 in e2 ==> e2[e1/x]"
        , "x must not be free in e1." ] .+ Deep
- , external "let-subst-type" (promoteExprR . letSubstType :: String -> RewriteH Core)
+ , external "let-subst-type" (promoteExprR . letSubstType :: String -> RewriteH LCore)
        [ "Let substitution (but only if the type of e1 contains the given type)"
        , "(\"let-subst-type '*\" is especially useful to eliminate bindings for types)"
        , "(let x = e1 in e2) ==> (e2[e1/x])"
        , "x must not be free in e1." ] .+ Deep
- , external "eval-eqWord" (promoteExprR eqWordElim :: RewriteH Core)
+ , external "eval-eqWord" (promoteExprR eqWordElim :: RewriteH LCore)
         ["eqWord# e1 e2 ==> True if e1 and e2 are literals and equal"
         ,"eqWord# e1 e2 ==> False if e1 and e2 are literals and not equal"] .+ Shallow .+ Eval
- , external "eval-tagToEnum" (promoteExprR tagToEnumElim :: RewriteH Core)
+ , external "eval-tagToEnum" (promoteExprR tagToEnumElim :: RewriteH LCore)
         ["tagToEnum# Bool 0 ==> True"] .+ Shallow .+ Eval
- , external "eval-fingerprintFingerprints" (promoteExprR evalFingerprintFingerprints :: RewriteH Core)
+ , external "eval-fingerprintFingerprints" (promoteExprR evalFingerprintFingerprints :: RewriteH LCore)
         ["replaces 'fingerprintFingerprints [f1,f2,...]' with its value."
         ,"Requires that f1,f2,... are literals."] .+ Shallow .+ Eval
- , external "eliminates-type" (promoteExprT . eliminatesType :: String -> TransformH Core ())
+ , external "eliminates-type" (promoteExprT . eliminatesType :: String -> TransformH LCore ())
         ["determines whether evaluating the term "] .+ Shallow
  , external "smart-td" (smarttdR)
         [ "apply a rewrite twice, in a top-down and bottom-up way, using one single tree traversal",
         "succeeding if any succeed"]
- , external "force" (promoteExprR force :: RewriteH Core)
+ , external "force" (promoteExprR force :: RewriteH LCore)
         ["force"].+ Eval
- , external "force" (promoteExprR . forcePrims :: [String] -> RewriteH Core)
+ , external "force" (promoteExprR . forcePrims :: [String] -> RewriteH LCore)
         ["force [Name]"].+ Eval
- , external "memoize" (promoteExprR memoize :: RewriteH Core)
+ , external "memoize" (promoteExprR memoize :: RewriteH LCore)
         ["TODO"] .+ Eval .+ Introduce
  , external "opt-syb"   optSYB   ["TODO"] .+ Eval .+ Introduce
  , external "opt-syb-lint"   (optSYB >>> (promoteExprT lintExprT >> idR))   ["TODO"] .+ Eval .+ Introduce
  , external "opt-simp"  optSimp  ["TODO"] .+ Eval .+ Introduce
  , external "opt-float" optFloat ["TODO"] .+ Eval .+ Introduce
  , external "opt-memo"  optMemo  ["TODO"] .+ Eval .+ Introduce
- , external "memo-float-app" (promoteExprR memoFloatApp :: RewriteH Core)
+ , external "memo-float-app" (promoteExprR memoFloatApp :: RewriteH LCore)
              [ "(let v = ev in e) x ==> let v = ev in e x" ]                    .+ Commute .+ Shallow
- , external "memo-float-arg" (promoteExprR memoFloatArg :: RewriteH Core)
+ , external "memo-float-arg" (promoteExprR memoFloatArg :: RewriteH LCore)
              [ "f (let v = ev in e) ==> let v = ev in f e" ]                    .+ Commute .+ Shallow
- , external "memo-float-lam" (promoteExprR memoFloatLam :: RewriteH Core)
+ , external "memo-float-lam" (promoteExprR memoFloatLam :: RewriteH LCore)
              [ "(\\ v1 -> let v2 = e1 in e2)  ==>  let v2 = e1 in (\\ v1 -> e2), if v1 is not free in e2.",
                "If v1 = v2 then v1 will be alpha-renamed."
              ]                                                                  .+ Commute .+ Shallow
- , external "memo-float-memo-let" (promoteExprR memoFloatMemoLet :: RewriteH Core)
+ , external "memo-float-memo-let" (promoteExprR memoFloatMemoLet :: RewriteH LCore)
              [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow
- , external "memo-float-memo-bind" (promoteExprR memoFloatMemoBind :: RewriteH Core)
+ , external "memo-float-memo-bind" (promoteExprR memoFloatMemoBind :: RewriteH LCore)
              [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow
- , external "memo-float-let" (promoteExprR memoFloatLet :: RewriteH Core)
+ , external "memo-float-let" (promoteExprR memoFloatLet :: RewriteH LCore)
              [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow
- , external "memo-float-bind" (promoteExprR memoFloatBind :: RewriteH Core)
+ , external "memo-float-bind" (promoteExprR memoFloatBind :: RewriteH LCore)
              [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow
- , external "memo-float-rec-bind" (promoteExprR memoFloatRecBind :: RewriteH Core)
+ , external "memo-float-rec-bind" (promoteExprR memoFloatRecBind :: RewriteH LCore)
              [ "let v = (let w = ew in ev) in e ==> let w = ew in let v = ev in e" ] .+ Commute .+ Shallow
- , external "memo-float-case" (promoteExprR memoFloatCase :: RewriteH Core)
+ , external "memo-float-case" (promoteExprR memoFloatCase :: RewriteH LCore)
              [ "case (let v = ev in e) of ... ==> let v = ev in case e of ..." ]  .+ Commute .+ Shallow .+ Eval
- , external "memo-float-cast" (promoteExprR memoFloatCast :: RewriteH Core)
+ , external "memo-float-cast" (promoteExprR memoFloatCast :: RewriteH LCore)
              [ "case (let v = ev in e) of ... ==> let v = ev in case e of ..." ]  .+ Commute .+ Shallow .+ Eval
- , external "memo-float-alt" (promoteExprR memoFloatAlt :: RewriteH Core)
+ , external "memo-float-alt" (promoteExprR memoFloatAlt :: RewriteH LCore)
              [ "case (let v = ev in e) of ... ==> let v = ev in case e of ..." ]  .+ Commute .+ Shallow .+ Eval
- , external "memo-elim" (promoteExprR memoElimR :: RewriteH Core)
+ , external "memo-elim" (promoteExprR memoElimR :: RewriteH LCore)
              [ "eliminate a non-self-recursive memoization binding" ]
  ]
 
@@ -251,7 +254,7 @@ tagToEnumElim = do
     _ -> fail "tagToEnum# on non-enumeration type"
 #endif
 
-varInfo2 :: String -> TransformH Core String
+varInfo2 :: String -> TransformH LCore String
 varInfo2 nm = translate $ \ c e ->
   case filter (cmpString2Var nm) $ Map.keys (hermitBindings c) of
          []  -> fail "cannot find name."
@@ -287,11 +290,11 @@ evalFingerprintFingerprints = do
   return (Var ctor `App` (Var w64 `App` Lit (MachWord (toInteger w1))) `App` (Var w64 `App` Lit (MachWord (toInteger w2))))
   --return (Var ctor `App` (Lit (MachWord (toInteger w1))) `App` (Lit (MachWord (toInteger w2))))
 
-isMemoizedLet :: TransformH Core ()
+isMemoizedLet :: TransformH LCore ()
 isMemoizedLet = do
   e <- idR
   case e of
-    ExprCore (Let (Rec [(v, _)]) _) -> do
+    LCore (ExprCore (Let (Rec [(v, _)]) _)) -> do
       flags <- constT $ getDynFlags
       void $ constT $ lookupDefByVar flags v
     _ -> fail "not a memoized let"
@@ -306,11 +309,11 @@ inlineType ty = prefixFailMsg ("inlineType '" ++ ty ++ " failed: ") $
       inlineR
 
 -- | Apply a 'Rewrite' in a bottom-up manner, succeeding if they all succeed.
-smarttdR :: RewriteH Core -> RewriteH Core
+smarttdR :: RewriteH LCore -> RewriteH LCore
 smarttdR r = modFailMsg ("smarttdR failed: " ++) $ go where
   go = r <+ go'
   go' = do
-    ExprCore e <- idR
+    LCore (ExprCore e) <- idR
     case e of
       Var _ -> fail "smarttdR Var"
       Lit _ -> fail "smarttdR Let"
@@ -349,7 +352,7 @@ eliminatesType ty = do
       {-^ not really an error, I just don't know what to do with it -}
     Type _ -> fail "types cannot eliminate types"
     Coercion _ -> fail "coercions cannot eliminate types"
-  where go :: CoreExpr -> TransformH Core ()
+  where go :: CoreExpr -> TransformH LCore ()
         go e = do let t = exprKindOrType e
                   dynFlags <- constT getDynFlags
                   guardMsg (ty `inType` t) $ " not found in " ++ showPpr dynFlags t ++ "."
@@ -397,7 +400,7 @@ memoize :: RewriteH CoreExpr
 memoize = prefixFailMsg "memoize failed: " $ do
     e <- idR
     (Var v, args) <- callT
-    --e' <- extractR (pathR (replicate (length args) 0) (promoteR {-force-} inline) :: RewriteH Core)
+    --e' <- extractR (pathR (replicate (length args) 0) (promoteR {-force-} inline) :: RewriteH LCore)
     e' <- force
     v' <- constT $ newIdH ("memo_"++getOccString v) (exprType e)
     dflags <- dynFlagsT

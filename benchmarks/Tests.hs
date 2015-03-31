@@ -138,6 +138,6 @@ allTests = handTests ++ sybTests ++ sybSpecTests ++ hermitSybTests
 
 tests = [ t | t <- allTests
         , lib t `elem` [Hand,SYB,SYBHermit]
-        , testName t `elem` [Eq] -- Map, RenumberInt, Update, RmWeights, SelectInt]
+        , testName t `elem` [Map, RenumberInt, Update, RmWeights, SelectInt] -- Eq
         , not (datatype t `elem` [HsModule])
         ]
